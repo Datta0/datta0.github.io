@@ -1,7 +1,6 @@
 baseURL: "https://datta0.github.io/"
 languageCode: "en-us"
 title: "Datta Nimmaturi"
-theme: hugo-profile
 
 outputs:
   home:
