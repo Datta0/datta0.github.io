@@ -2,9 +2,19 @@
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
     <title>Datta Nimmaturi</title>
-    <link>http://datta0.github.io/</link>
+    <link>https://datta0.github.io/</link>
     <description>Recent content on Datta Nimmaturi</description>
     <generator>Hugo -- gohugo.io</generator>
-    <language>en-us</language><atom:link href="http://datta0.github.io/index.xml" rel="self" type="application/rss+xml" />
+    <language>en-us</language>
+    <lastBuildDate>Fri, 09 Dec 2022 19:53:33 +0530</lastBuildDate><atom:link href="https://datta0.github.io/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Render Math With Mathjax</title>
+      <link>https://datta0.github.io/blogs/hello-world/</link>
+      <pubDate>Fri, 09 Dec 2022 19:53:33 +0530</pubDate>
+      
+      <guid>https://datta0.github.io/blogs/hello-world/</guid>
+      <description>Hello World The first ever blog in this space. Lesgo</description>
+    </item>
+    
   </channel>
 </rss>

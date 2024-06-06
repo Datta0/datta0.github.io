@@ -2,10 +2,27 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
-    <loc>http://datta0.github.io/categories/</loc>
+    <loc>https://datta0.github.io/blogs/</loc>
+    <lastmod>2022-12-09T19:53:33+05:30</lastmod>
   </url><url>
-    <loc>http://datta0.github.io/</loc>
+    <loc>https://datta0.github.io/</loc>
+    <lastmod>2022-12-09T19:53:33+05:30</lastmod>
   </url><url>
-    <loc>http://datta0.github.io/tags/</loc>
+    <loc>https://datta0.github.io/tags/example/</loc>
+    <lastmod>2022-12-09T19:53:33+05:30</lastmod>
+  </url><url>
+    <loc>https://datta0.github.io/tags/markdown-syntax/</loc>
+    <lastmod>2022-12-09T19:53:33+05:30</lastmod>
+  </url><url>
+    <loc>https://datta0.github.io/tags/mathjax/</loc>
+    <lastmod>2022-12-09T19:53:33+05:30</lastmod>
+  </url><url>
+    <loc>https://datta0.github.io/blogs/hello-world/</loc>
+    <lastmod>2022-12-09T19:53:33+05:30</lastmod>
+  </url><url>
+    <loc>https://datta0.github.io/tags/</loc>
+    <lastmod>2022-12-09T19:53:33+05:30</lastmod>
+  </url><url>
+    <loc>https://datta0.github.io/categories/</loc>
   </url>
 </urlset>
