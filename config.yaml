@@ -145,7 +145,8 @@ params:
           url: https://x.com/im_datta0
         - icon: fab fa-linkedin
           url: https://www.linkedin.com/in/datta0/
-        - icon: /substack.png
+      customIcons:
+        - icon: /images/substack.png
           url: https://datta0.substack.com/
 
   # About
@@ -168,6 +169,19 @@ params:
         - "Node"
         - "Express"
 
+  footer:
+    recentPosts:
+      path: "blogs"
+      count: 3
+      title: Recent Posts
+      enable: true
+      disableFeaturedImage: false
+    socialNetworks:
+      github: https://github.com/datta0
+      linkedin: https://linkedin.com/in/datta0
+      twitter: https://twitter.com/im_datta0
+      substack: https://datta0.substack.com
+
   #Contact
   contact:
     enable: true
@@ -181,18 +195,6 @@ params:
     #   emailCaption: "Enter your email address"
     #   messageCaption: "Enter your message here"
 
-  footer:
-    recentPosts:
-      path: "blogs"
-      count: 3
-      title: Recent Posts
-      enable: true
-      disableFeaturedImage: false
-    socialNetworks:
-      github: https://github.com/datta0
-      linkedin: https://linkedin.com/in/datta0
-      twitter: https://twitter.com/im_datta0
-      substack: https://datta0.substack.com
 
   # List pages like blogs and posts
   listPages:
