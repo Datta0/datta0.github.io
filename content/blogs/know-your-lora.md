@@ -13,7 +13,7 @@ toc: true
 mathjax: true
 ---
 
-# Rethink LoRA initilisations
+# Rethink LoRA initialisations
 
 ## What is LoRA
 
@@ -125,8 +125,8 @@ Two vectors are called orthogonal when their dot product is zero. So in our use 
 <details>
 <summary> <b>Orthogonality on linear combination</b> <hr></summary>
 
-say vectors ${v_1, v_2, v_3, \ldots v_x}$ are set of orthogonal vectors 
-which means, $v_i.v_j = 0 \space \forall \space i,j$
+say vectors \\( {v_1, v_2, v_3, \ldots v_x} \\) are set of orthogonal vectors 
+which means, \\( v_i.v_j = 0 \space \forall \space i,j \\)
 so for any linear combination\
 $$ C_a = a_1 v_1 + a_2 v_2 + \ldots a_x v_x $$
 $$ C_b = b_1 v_1 + b_2 v_2 + \ldots a_x v_x $$
@@ -134,7 +134,7 @@ So the dot product would be (assuming $v_i$ is unit vector)
 $$ C_a.C_b = (a_1 v_1 + a_2 v_2 + \ldots a_x v_x).(b_1 v_1 + b_2 v_2 + \ldots a_x v_x) $$
 $$ = \sum_{i} a_ib_iv_i^2 + \left[ \sum_{i}\sum_{j\neq i} a_ib_j(v_iv_j) = 0 \right] = \sum_{i} a_ib_i$$
 
-Note that if we ensure that either of $a_i$ or $b_i$ is zero, the product would be exact zero. For that, if we make sure that if a vector is in $C_a$ the same vector isn't in $C_b$, we'd have $C_a.C_b = 0$
+Note that if we ensure that either of \\(a_i\\) or \\(b_i\\) is zero, the product would be exact zero. For that, if we make sure that if a vector is in \\(C_a\\) the same vector isn't in \\(C_b\\), we'd have \\(C_a.C_b = 0\\)
 </details>
 <br>
 

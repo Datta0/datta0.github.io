@@ -394,15 +394,15 @@ Note: truncated for better readability
 <p>Two vectors are called orthogonal when their dot product is zero. So in our use case, we need a lot of such orthogonal vectors. Those should be orthogonal in 8-D space (or whatever the lora rank is). And we need <code>m</code> such vectors in <code>A</code> and <code>n</code> such vectors in <code>B</code>. If we say have a few orthogonal vectors, any linear combinations of those would be orthogonal too.</p>
 <details>
 <summary> <b>Orthogonality on linear combination</b> <hr></summary>
-<p>say vectors ${v_1, v_2, v_3, \ldots v_x}$ are set of orthogonal vectors
-which means, $v_i.v_j = 0 \space \forall \space i,j$
+<p>say vectors \( {v_1, v_2, v_3, \ldots v_x} \) are set of orthogonal vectors
+which means, \( v_i.v_j = 0 \space \forall \space i,j \)
 so for any linear combination<br>
 $$ C_a = a_1 v_1 + a_2 v_2 + \ldots a_x v_x $$
 $$ C_b = b_1 v_1 + b_2 v_2 + \ldots a_x v_x $$
 So the dot product would be (assuming $v_i$ is unit vector)
 $$ C_a.C_b = (a_1 v_1 + a_2 v_2 + \ldots a_x v_x).(b_1 v_1 + b_2 v_2 + \ldots a_x v_x) $$
 $$ = \sum_{i} a_ib_iv_i^2 + \left[ \sum_{i}\sum_{j\neq i} a_ib_j(v_iv_j) = 0 \right] = \sum_{i} a_ib_i$$</p>
-<p>Note that if we ensure that either of $a_i$ or $b_i$ is zero, the product would be exact zero. For that, if we make sure that if a vector is in $C_a$ the same vector isn&rsquo;t in $C_b$, we&rsquo;d have $C_a.C_b = 0$</p>
+<p>Note that if we ensure that either of \(a_i\) or \(b_i\) is zero, the product would be exact zero. For that, if we make sure that if a vector is in \(C_a\) the same vector isn&rsquo;t in \(C_b\), we&rsquo;d have \(C_a.C_b = 0\)</p>
 </details>
 <br>
 <p>Now the task boils down to finding a few orthogonal. There are two methods I can think of for this.</p>
