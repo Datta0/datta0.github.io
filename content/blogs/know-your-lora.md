@@ -24,6 +24,7 @@ $$ W' = W + \Delta W  = W + AB \space\space where \space\space A=\mathbb{R}^{(m,
 Here W are the initial weights and ΔW is the change in weights upon fine tuning. The advantage with LoRA unlike other PEFT techniques is that LoRA weights can be merged back into the initial model and hence there will not be any performance loss at inference. Also, because this is just an adapter, one can dynamically switch between adapters and having no adapter aka using base model.
 Such versatility and flexibility propelled LoRA to become the most used PEFT technique and the best part is, this is model agnostic. So any model that has linear layers, can use this. It has been very famous in both Image generation and NLP worlds off late.
 
+## LoRA Initialization
 Now comes the question. If we add another weight to existing weight matrix, wouldn't it put the model off? Yes, adding any random stuff does impact the model quality. But to ensure that at initialisation model doesn't suffer from such issues, we initialise matrices `A` and `B` such that the product `ΔW = AB = 0`.
 
 But how do you do that? Initialising both to zero is a viable option but would inhibit the model from learning. So the original paper proposes to initialise A with [kaiming uniform](https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.kaiming_uniform_) (just uniform initialisation with differnt range parameter). So problem solved right? We now have a non zero A and a zero B such that `AB = 0`. Well technically yes and this has been working for long. So why change it huh?
@@ -175,6 +176,9 @@ The only problem with **Method 2** where we use Identity matrix is, after splitt
 </details>
 <br>
 
+<b>Note</b>: If you have any other different ideas for initialisation, feel free to reach out to me and we can discuss. 
+
+## Results
 Ok enough of theory. How does it hold in practice? Well I've tried training LoRAs with models of different sizes and architectures. The results look promising. 
 Here's the [wandb project](https://wandb.ai/imdatta0/lora_inits) where I've been tracking my runs and here's the [wandb report](https://wandb.ai/imdatta0/lora_inits/reports/LoRA-initialisations--Vmlldzo4MjQ4Njg0) of the same
 <details>
@@ -210,6 +214,7 @@ If you observe, reverse initialisation definitely outperforms the normal initial
 
 So for no loss, we're improving the convergence of LoRA. I know it takes a little time to initialise all the matrices given that we're doing QR decomposition for each of the layers. But this is a one time thing in the whole training cycle. It definitely makes sense to consider this as a starting point for initalisations.
 
+## Analysis and Bonus content
 One other interesting thing I observed while training is the gradients. Thanks to wandb, I was able to track the gradeints. What I observed is, irrespective of initialisation, gradients for LoRA B are always greater than those of LoRA A. This is something we might need to look into later...
 
 Gradients for Normal initialisation
@@ -220,3 +225,10 @@ Gradients for Orthogonal initialisation
 ![Gradients for Orthogonal initialisation](/images/blogs//know_lora/lora_grad_ortho.jpg)
 
 
+What does this all tell us? If you ask me, there are some things that we can infer or take away from this
+1. The gradeints hint us towards having separate learning rates for A and B matrices. 
+2. Different initalisations for LoRA should be further experimented upon. There are improvements we can harness.
+3. We probably need more ablation studies for newer techniques. Someday maybe even scaling laws for LoRA (or PEFT in general).
+
+
+Thanks for the read :) If you have any questions, comments, suggestions please feel free to reach out to me.  Cheers ...
