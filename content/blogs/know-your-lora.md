@@ -199,9 +199,12 @@ optim=f"paged_adamw_32bit",
 ```
 
 Note: I'm only tracking eval loss and performance on downstream tasks is a thing for another day :)
-![Comparing losses of different initialisations](./images/know_lora/init_losses_sample.png)
+![Comparing losses of different initialisations](/images/blogs/know_lora/init_losses_sample.png)
 
-<iframe src="https://wandb.ai/imdatta0/lora_inits/reports/LoRA-intialisations--Vmlldzo4MjQ4Njg4" style="border:none;height:1024px;width:100%">
+wandb render of the same
+<iframe src="https://wandb.ai/imdatta0/lora_inits/reports/LoRA-initialisations--Vmlldzo4MjQ4Njg0" style="border:none;height:512px;width:100%">
+</iframe>
+
 
 If you observe, reverse initialisation definitely outperforms the normal initialisation. And most of the cases, orthogonal initialisation outperforms both the normal initialisation and the reverse initialisation. 
 
@@ -209,7 +212,11 @@ So for no loss, we're improving the convergence of LoRA. I know it takes a littl
 
 One other interesting thing I observed while training is the gradients. Thanks to wandb, I was able to track the gradeints. What I observed is, irrespective of initialisation, gradients for LoRA B are always greater than those of LoRA A. This is something we might need to look into later...
 
-![Gradients for Normal initialisation](./imgaes/know_lora/lora_grads_normal.png)
-![Gradients for Reverse initialisation](./imgaes/know_lora/lora_grads_reverse.png)
-![Gradients for Orthogonal initialisation](./imgaes/know_lora/lora_grads_ortho.png)
+Gradients for Normal initialisation
+![Gradients for Normal initialisation](/images/blogs/know_lora/lora_grad_normal.jpg)
+Gradients for Reverse initialisation
+![Gradients for Reverse initialisation](/images/blogs//know_lora/lora_grad_rev%20.jpg)
+Gradients for Orthogonal initialisation
+![Gradients for Orthogonal initialisation](/images/blogs//know_lora/lora_grad_ortho.jpg)
+
 
