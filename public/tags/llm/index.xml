@@ -1,1 +1,19 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>LLM on Datta Nimmaturi</title><link>datta0.github.io/tags/llm/</link><description>Recent content in LLM on Datta Nimmaturi</description><generator>Hugo</generator><language>en-us</language><lastBuildDate>Fri, 07 Jun 2024 03:06:01 +0000</lastBuildDate><atom:link href="datta0.github.io/tags/llm/index.xml" rel="self" type="application/rss+xml"/><item><title>Know your LoRA</title><link>datta0.github.io/blogs/know-your-lora/</link><pubDate>Fri, 07 Jun 2024 03:06:01 +0000</pubDate><guid>datta0.github.io/blogs/know-your-lora/</guid><description>Rethink LoRA initilisations What is LoRA LoRA has been a tremendous tool in the world of fine tuning, especially parameter efficient fine tuning. It is an easy way to fine tune your models with very little memory requirements. LoRA was first introduced in this paper by Hu et al. The premise of LoRA is, upon fine tuning, the change in weights of the matrices are of low rank in comparison with the original matrix To exploit this, LoRA adds an adapter which we can train while having the initial model weights frozen.</description></item></channel></rss>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>LLM on Datta Nimmaturi</title>
+    <link>http://localhost:1313/tags/llm/</link>
+    <description>Recent content in LLM on Datta Nimmaturi</description>
+    <generator>Hugo</generator>
+    <language>en-us</language>
+    <lastBuildDate>Fri, 07 Jun 2024 03:06:01 +0000</lastBuildDate>
+    <atom:link href="http://localhost:1313/tags/llm/index.xml" rel="self" type="application/rss+xml" />
+    <item>
+      <title>Know your LoRA</title>
+      <link>http://localhost:1313/blogs/know-your-lora/</link>
+      <pubDate>Fri, 07 Jun 2024 03:06:01 +0000</pubDate>
+      <guid>http://localhost:1313/blogs/know-your-lora/</guid>
+      <description>Rethink LoRA initilisations What is LoRA LoRA has been a tremendous tool in the world of fine tuning, especially parameter efficient fine tuning. It is an easy way to fine tune your models with very little memory requirements. LoRA was first introduced in this paper by Hu et al. The premise of LoRA is, upon fine tuning, the change in weights of the matrices are of low rank in comparison with the original matrix To exploit this, LoRA adds an adapter which we can train while having the initial model weights frozen.</description>
+    </item>
+  </channel>
+</rss>

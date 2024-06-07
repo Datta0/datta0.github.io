@@ -1,1 +1,12 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Know your LoRA on Datta Nimmaturi</title><link>datta0.github.io/blogs/know-your-lora/</link><description>Recent content in Know your LoRA on Datta Nimmaturi</description><generator>Hugo</generator><language>en-us</language><lastBuildDate/><atom:link href="datta0.github.io/blogs/know-your-lora/index.xml" rel="self" type="application/rss+xml"/></channel></rss>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Know your LoRA on Datta Nimmaturi</title>
+    <link>http://localhost:1313/blogs/know-your-lora/</link>
+    <description>Recent content in Know your LoRA on Datta Nimmaturi</description>
+    <generator>Hugo</generator>
+    <language>en-us</language>
+    <lastBuildDate></lastBuildDate>
+    <atom:link href="http://localhost:1313/blogs/know-your-lora/index.xml" rel="self" type="application/rss+xml" />
+  </channel>
+</rss>

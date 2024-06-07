@@ -147,6 +147,9 @@ params:
       customIcons:
         - icon: /images/substack.png
           url: https://datta0.substack.com/
+        - icon: /images/huggingface.png
+          url: https://huggingface.co/imdatta0
+        
 
   # About
   about:
