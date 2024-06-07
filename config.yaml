@@ -55,7 +55,7 @@ params:
   title: "Datta Nimmaturi"
   description: Text about my cool site
   # staticPath: ""  # The path to serve the static files from
-  favicon: "/fav.png"
+  favicon: "/zoozoo.jpg"
 
   # Whether to serve bootstrap css and js files from CDN or not. Can be set to true, "css" or "js" to choose between
   # serving both, only the css, or only the js files through the CDN. Any other value will make so that CDN is not used.
@@ -124,7 +124,7 @@ params:
     enable: true
     intro: "Hi, my name is"
     title: "Datta Nimmaturi."
-    subtitle: "I talk the Model language so you can talk your language :)"
+    subtitle: "I talk the model language so you can talk your language :)"
     content: "Deep Learning Aficionado. Linux & Tech Enthusiast. Loves Math. Cricket & Chess Strategist"
     image: /images/me.jpg
     bottomImage:
