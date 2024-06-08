@@ -3,6 +3,22 @@
 
 <head>
   {{- partial "head.html" . -}}
+
+  <!-- Google Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-15W008D4SZ"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-15W008D4SZ');
+    // Example of event tracking
+    gtag('event', 'page_view', {
+        'page_path': '{{ .Permalink }}',
+        'page_title': '{{ .Title }}'
+    });
+  </script>
+  <!-- End Google Analytics -->
+
   {{- block "head" . }} {{- end }}
   <title>
     {{- block "title" . }} {{- end }}

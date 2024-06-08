@@ -8,6 +8,21 @@
 <link rel="icon" href=/zoozoo.jpg type="image/gif">
 
 
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-15W008D4SZ"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-15W008D4SZ');
+  
+  gtag('event', 'page_view', {
+        'page_path': 'http:\/\/localhost:1313\/blogs\/know-your-lora\/',
+        'page_title': 'Know your LoRA'
+    });
+</script>
+
+
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preload"
@@ -34,7 +49,7 @@
 <meta property="og:url" content="http://localhost:1313/blogs/know-your-lora/">
   <meta property="og:site_name" content="Datta Nimmaturi">
   <meta property="og:title" content="Know your LoRA">
-  <meta property="og:description" content="Rethink LoRA initilisations What is LoRA LoRA has been a tremendous tool in the world of fine tuning, especially parameter efficient fine tuning. It is an easy way to fine tune your models with very little memory requirements. LoRA was first introduced in this paper by Hu et al. The premise of LoRA is, upon fine tuning, the change in weights of the matrices are of low rank in comparison with the original matrix To exploit this, LoRA adds an adapter which we can train while having the initial model weights frozen.">
+  <meta property="og:description" content="Rethink LoRA initialisations What is LoRA LoRA has been a tremendous tool in the world of fine tuning, especially parameter efficient fine tuning. It is an easy way to fine tune your models with very little memory requirements. LoRA was first introduced in this paper by Hu et al. The premise of LoRA is, upon fine tuning, the change in weights of the matrices are of low rank in comparison with the original matrix To exploit this, LoRA adds an adapter which we can train while having the initial model weights frozen.">
   <meta property="og:locale" content="en_us">
   <meta property="og:type" content="article">
     <meta property="article:section" content="blogs">
@@ -47,7 +62,7 @@
 
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="Know your LoRA">
-  <meta name="twitter:description" content="Rethink LoRA initilisations What is LoRA LoRA has been a tremendous tool in the world of fine tuning, especially parameter efficient fine tuning. It is an easy way to fine tune your models with very little memory requirements. LoRA was first introduced in this paper by Hu et al. The premise of LoRA is, upon fine tuning, the change in weights of the matrices are of low rank in comparison with the original matrix To exploit this, LoRA adds an adapter which we can train while having the initial model weights frozen.">
+  <meta name="twitter:description" content="Rethink LoRA initialisations What is LoRA LoRA has been a tremendous tool in the world of fine tuning, especially parameter efficient fine tuning. It is an easy way to fine tune your models with very little memory requirements. LoRA was first introduced in this paper by Hu et al. The premise of LoRA is, upon fine tuning, the change in weights of the matrices are of low rank in comparison with the original matrix To exploit this, LoRA adds an adapter which we can train while having the initial model weights frozen.">
 
 
 <link rel="stylesheet" href="/bootstrap-5/css/bootstrap.min.css" media="all"><link rel="stylesheet" href="/css/header.css" media="all">
@@ -111,6 +126,19 @@
 </style>
 
 
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-15W008D4SZ"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-15W008D4SZ');
+    
+    gtag('event', 'page_view', {
+        'page_path': 'http:\/\/localhost:1313\/blogs\/know-your-lora\/',
+        'page_title': 'Know your LoRA'
+    });
+  </script>
+  
 <meta name="description" content="">
 <link rel="stylesheet" href="/css/single.css">
 
@@ -299,7 +327,7 @@ Know your LoRA | Datta Nimmaturi
           </div>
           
           <article class="page-content  p-2">
-          <h1 id="rethink-lora-initilisations">Rethink LoRA initilisations</h1>
+          <h1 id="rethink-lora-initialisations">Rethink LoRA initialisations</h1>
 <h2 id="what-is-lora">What is LoRA</h2>
 <p>LoRA has been a tremendous tool in the world of fine tuning, especially parameter efficient fine tuning. It is an easy way to fine tune your models with very little memory requirements.
 LoRA was first introduced in <a href="https://arxiv.org/abs/2106.09685">this paper</a> by Hu et al. The premise of LoRA is, upon fine tuning, the change in weights of the matrices are of low rank in comparison with the original matrix

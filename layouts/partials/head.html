@@ -4,6 +4,21 @@
 <meta http-equiv="Accept-CH" content="DPR, Viewport-Width, Width">
 <link rel="icon" href={{ .Site.Params.favicon | default "/fav.png" }} type="image/gif">
 
+<!-- Google Analytics -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-15W008D4SZ"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-15W008D4SZ');
+  // Example of event tracking
+  gtag('event', 'page_view', {
+        'page_path': '{{ .Permalink }}',
+        'page_title': '{{ .Title }}'
+    });
+</script>
+<!-- End Google Analytics -->
+
 <!-- Fonts -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
