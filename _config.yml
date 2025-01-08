@@ -13,41 +13,39 @@ baseurl: ''
 lang: en
 
 # Change to your timezone › http://www.timezoneconverter.com/cgi-bin/findzone/findzone
-timezone: Europe/Moscow
+timezone: Asia/Calcutta
 
 # jekyll-seo-tag settings › https://github.com/jekyll/jekyll-seo-tag/blob/master/docs/usage.md
 # ↓ --------------------------
 
-title: AstraBlog                          # the main title
+title: Datta's Blog                          # the main title
 
-tagline: A place to learn and share knowledge about AI-related things   # it will display as the sub-title
+tagline: A place where I share my thoughts, findings and learnings
 
-description: >-                        # used by seo meta and the atom feed
-  A minimal, portfolio, sidebar,
-  bootstrap Jekyll theme with responsive web design
-  and focuses on text presentation.
+description: >-                        
+  A minimal, responsive and feature-rich Jekyll Chirpy theme for technical writing.
 
 # fill in the protocol & hostname for your site, e.g., 'https://username.github.io'
-url: 'https://astralord.github.io'
+url: 'https://datta0.github.io'
 
 github:
-  username: astralord             # change to your github username
+  username: datta0             # change to your github username
 
 social:
   # Change to your full name.
   # It will be displayed as the default author of the posts and the copyright owner in the Footer
-  name: Aleksandr Samarin
-  email: samarin_ad@mail.ru             # change to your email address
+  name: Datta Nimmaturi
+  email: venkatadattasainimmaturi@gmail.com # change to your email address
   links:
     # The first element serves as the copyright owner's link
-    - https://github.com/astralord       # change to your github homepage
-    # Uncomment below to add more social links
-    # - https://www.facebook.com/username
-    - https://www.linkedin.com/in/aleksandr-samarin-b8a35496/
+    - https://twitter.com/im_datta0
+    - https://github.com/datta0
+    - https://www.linkedin.com/in/datta0
+    - https://datta0.substack.com
 
 author:
-  name: Aleksandr Samarin
-  url: https://astralord.github.io/
+  name: Datta Nimmaturi
+  url: https://datta0.github.io/
 
 google_site_verification: google_meta_tag_verification # change to your verification string
 
@@ -82,7 +80,7 @@ theme_mode:   # [light|dark]
 img_cdn: ''
 
 # the avatar on sidebar, support local or CORS resources
-avatar: "/assets/img/marvel-icon.jpg"
+avatar: "/assets/img/zoozoo.jpg"
 
 # boolean type, the global switch for ToC in posts.
 toc: true
