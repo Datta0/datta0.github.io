@@ -4,7 +4,6 @@ source "https://rubygems.org"
 
 gemspec
 
-
 gem "html-proofer", "~> 5.0", group: :test
 
 
@@ -15,6 +14,7 @@ end
 
 gem 'csv'
 gem 'base64'
+gem 'logger'
 
 # Performance-booster for watching directories on Windows
 gem "wdm", "~> 0.2.0", :platforms => [:mingw, :x64_mingw, :mswin]
