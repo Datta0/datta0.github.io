@@ -21,13 +21,52 @@ So without further ado, lets get comparing.
 
     $$ Q_i = W_{q_i} X, \quad K_i = W_{k_i} X, \quad V_i = W_{v_i} X \quad \text {where X is the input}$$
 
+    $$ Q = [Q_1, Q_2,..., Q_h], \quad K = [K_1, K_2,..., K_h], \quad V = [V_1, V_2,..., V_h] \quad \text {where [ ] is concatenation}$$
+
     $$ A_i = \text{Attention}(Q_i, K_i, V_i) = softmax(\frac{Q_iK_i^T}{\sqrt{d_k}})V_i $$
     $$ A = [A_1, A_2, ..., A_h] \space @ \space  Wo $$
 
-    - **Config** : `n` layers. Each layer has `h` heads. Each head has `d` dimensions. Total token count `t`. 
-    - **Parameters**: $W_{q_i}$ is of shape $(h*d, d)$, so has $h^2*d^2$ parameters. Same for $W_{k_i}, W_{v_i}$. $W_o$ is of size $(h*d, h*d)$  so $h^2*d^2$ parameters. Total of $4*n*h^2*d^2$.
-    - **Activations**: Each token's query is of size `d` (per head). The same is for key and value. Hence a total of $3*n*h*d$ per token. The final output is of same shape as well. The attention scores form a matrix of size $t*t$ hence $t^2$. So a total of $4*n*h*d*t + n*h*t^2$.
-    - **KVCache**: Each key and value is of size `d` per token per head per layer. Hence a total of $2*n*h*d*t$.
+    **Config** : `n` layers. Each layer has `h` heads. Each head has `d` dimensions. Total token count `t`. 
+
+    **Parameters**: $W_{q_i}$ is of shape $(h*d, d)$, so has $h*d^2$ parameters per head. Same for $W_{k_i}, W_{v_i}$. So $W_q + W_k + W_v$ contributes to a total of $3*h*(h*d^2)$ paramters. $W_o$ is of size $(h*d, h*d)$  so $h^2*d^2$ parameters. Total of $4*n*h^2*d^2$.
+
+    For example, [Llama-2-7b-hf](https://huggingface.co/meta-llama/Llama-2-7b-hf/blob/main/config.json) has [32 attention heads](https://huggingface.co/meta-llama/Llama-2-7b-hf/blob/main/config.json#L14) and [32 key value heads](https://huggingface.co/meta-llama/Llama-2-7b-hf/blob/main/config.json#L16). So llama 2 7B uses MHA. It has a [hidden_size of 4096](https://huggingface.co/meta-llama/Llama-2-7b-hf/,blob/main/config.json#L9). This means, each head has a head_dim (d) of **128**. So the algebra tells us that $W_{q_i}$ would be of shape $(128 *32,128) = (4096,128)$. Each Q (similarly K,V) would be of shape $(4096, 128*32)=(4096,4096)$ contributing to $128^2 * 32^2=1,6,777,216$ paramters. Executing the below code would give you the same result. Voila.
+
+    ```python
+    llama2 = AutoModelForCausalLM.from_pretrained(
+        'meta-llama/Llama-2-7b-hf',
+        device_map='cuda:0',
+        torch_dtype = torch.bfloat16,
+    )
+
+    q_shape = llama2.model.layers[0].self_attn.q_proj.weight.shape
+    q_params = llama2.model.layers[0].self_attn.q_proj.weight.numel()
+
+    k_shape = llama2.model.layers[0].self_attn.k_proj.weight.shape
+    k_params = llama2.model.layers[0].self_attn.k_proj.weight.numel()
+
+    v_shape = llama2.model.layers[0].self_attn.v_proj.weight.shape
+    v_params = llama2.model.layers[0].self_attn.v_proj.weight.numel()
+
+    o_shape = llama2.model.layers[0].self_attn.o_proj.weight.shape
+    o_params = llama2.model.layers[0].self_attn.o_proj.weight.numel()
+
+    print(f'Wq shape is {q_shape} contributes to {q_params} paramters')
+    print(f'Wk shape is {k_shape} contributes to {k_params} paramters')
+    print(f'Wv shape is {v_shape} contributes to {v_params} paramters')
+    print(f'Wo shape is {o_shape} contributes to {o_params} paramters')
+    ```
+
+    ```
+    Wq shape is torch.Size([4096, 4096]) contributes to 16777216 paramters
+    Wk shape is torch.Size([4096, 4096]) contributes to 16777216 paramters
+    Wv shape is torch.Size([4096, 4096]) contributes to 16777216 paramters
+    Wo shape is torch.Size([4096, 4096]) contributes to 16777216 paramters    
+    ```
+
+    **Activations**: Each token's query is of size `d` (per head). The same is for key and value. Hence a total of $3*n*h*d$ per token. The final output is of same shape as well. The attention scores, one per each pair of input tokens, form a matrix of size $t*t$ hence $t^2$. So a total of $4*n*h*d*t + n*h*t^2$.
+
+    **KVCache**: Each key and value is of size `d` per token per head per layer. Hence a total of $n*h*d*t$ for key (and value). So the size of KV Cache is $2*n*h*d*t$
         
 
 - ### Multi Query Attention (MQA)
@@ -46,9 +85,43 @@ So without further ado, lets get comparing.
     $$ A_i = \text{Attention}(Q_i, K_{i//g}, V_i) = softmax(\frac{Q_iK_{i//g}^T}{\sqrt{d_k}})V_i $$
     $$ A = [A_1, A_2, ..., A_h] \space @ \space  Wo $$
 
-    - **Parameters**: $W_{q_i}$ is of shape $(h*d, d)$, so has $h^2*d^2$ parameters. As for $W_{k_i}, W_{v_i}$, they output a single vector per group of heads. So $(g*d,d)$ shape and hence $g*d^2$ parameters. $W_o$ is of size $(h*d, h*d)$  so $h^2*d^2$ parameters. Total of $2*n*h^2*d^2 + 2*n*g*h*d^2$.
-    - **Activations**: Each token's query is of size `d` (per head) So $h*d$.There is one key per group of heads hence only $2*d*g$ (key and value). Hence a total of $n*h*d*t + 2*n*g*d*t$. The final output is of same shape as query as well. The attention scores form a matrix of size $t*t$ hence $t^2$. So a total of $2*n*h*d*t + 2*n*g*d*t + n*h*t^2$.
-    - **KVCache**: Each key and value is of size `d` per token per layer per group. Hence a total of $2*n*g*d*t$. A compression of `h/g` times compared to MHA.
+    **Parameters**: $W_{q_i}$ is of shape $(h*d, d)$, so has $h^2*d^2$ parameters. As for $W_{k_i}, W_{v_i}$, they output a single vector per group of heads. So $(g*d,d)$ shape and hence $g*d^2$ parameters. $W_o$ is of size $(h*d, h*d)$  so $h^2*d^2$ parameters. Total of $2*n*h^2*d^2 + 2*n*g*h*d^2$.
+
+    ```python
+    llama3 = AutoModelForCausalLM.from_pretrained(
+        'meta-llama/Meta-Llama-3.1-8B-Instruct',
+        device_map='cuda:0',
+        torch_dtype = torch.bfloat16,
+    )
+    q_shape = llama3.model.layers[0].self_attn.q_proj.weight.shape
+    q_params = llama3.model.layers[0].self_attn.q_proj.weight.numel()
+
+    k_shape = llama3.model.layers[0].self_attn.k_proj.weight.shape
+    k_params = llama3.model.layers[0].self_attn.k_proj.weight.numel()
+
+    v_shape = llama3.model.layers[0].self_attn.v_proj.weight.shape
+    v_params = llama3.model.layers[0].self_attn.v_proj.weight.numel()
+
+    o_shape = llama3.model.layers[0].self_attn.o_proj.weight.shape
+    o_params = llama3.model.layers[0].self_attn.o_proj.weight.numel()
+
+    print(f'Wq shape is {q_shape} contributes to {q_params} paramters')
+    print(f'Wk shape is {k_shape} contributes to {k_params} paramters')
+    print(f'Wv shape is {v_shape} contributes to {v_params} paramters')
+    print(f'Wo shape is {o_shape} contributes to {o_params} paramters')
+    ```
+
+    ```
+    Wq shape is torch.Size([4096, 4096]) contributes to 16777216 paramters
+    Wk shape is torch.Size([1024, 4096]) contributes to 4194304 paramters
+    Wv shape is torch.Size([1024, 4096]) contributes to 4194304 paramters
+    Wo shape is torch.Size([4096, 4096]) contributes to 16777216 paramters
+    ```
+
+
+    **Activations**: Each token's query is of size `d` (per head) resulting in $h*d$ sized tensor. There is one key per group of heads hence only $d*g$ (key, value) which together add up to $2*d*g$ per token. Hence a total of $n*h*d*t + 2*n*g*d*t$. The final output is of same shape as query as well. The attention scores form a matrix of size $t*t$ hence $t^2$. So a total of $2*n*h*d*t + 2*n*g*d*t + n*h*t^2$.
+
+    **KVCache**: Each key and value is of size `d` per token per layer per group. Hence a total of $2*n*g*d*t$. A compression of `h/g` times compared to MHA.
 
 - ### MultiHead Latent Attention (MLA)
     A new architecture found in DeepSeek V2 family of models. Here, we compress the Keys and values into a latent space and uncompress them back to original space when inference takes place. The idea is to get the advantages of MHA while saving up on KVCache as it scales linearly with context length. Each key and value are compressed from `d` dimensions to `c` dimension space.
@@ -69,7 +142,7 @@ So without further ado, lets get comparing.
     $$ A_i = \text{Attention}(Q_i, K_i, V_i) = softmax(\frac{Q_i K_i^T}{\sqrt{d_k}})V_i $$
     $$ A = [A_1, A_2, ..., A_h] \space @ \space  Wo $$
 
-    - **KVCache**: Each compressed vector is of size `c` per token per layer per group. Hence a total of $n*g*c*t$. Keys and values are inferred by decompressing this ($k_t^C, v_t^C$). A compression of `2*d/c` times compared to MHA. Note that in final implementation there's a nuance of additional heads (and hence keys and values) for RoPE. That adds a little more overhead. So the compression ratio essentially becomes $2*d/(c+r)$ where r is the RoPE key dimension.
+    **KVCache**: Each compressed vector is of size `c` per token per layer per group. Hence a total of $n*g*c*t$. Keys and values are inferred by decompressing this ($k_t^C, v_t^C$). A compression of `2*d/c` times compared to MHA. Note that in final implementation there's a nuance of additional heads (and hence keys and values) for RoPE. That adds a little more overhead. So the compression ratio essentially becomes $2*d/(c+r)$ where r is the RoPE key dimension.
 
 
 This image from DeepSeek V2 paper gives a crisp view of the above mentioned architectures.
