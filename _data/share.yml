@@ -9,6 +9,7 @@ platforms:
   - type: Linkedin
     icon: "fab fa-linkedin"
     link: "https://www.linkedin.com/shareArticle?mini=true&url=URL"
+<<<<<<< HEAD
 
   # Uncomment below if you need to.
   #
@@ -32,3 +33,5 @@ platforms:
   #       link: "https://fosstodon.org/"
   #     - label: photog.social
   #       link: "https://photog.social/"
+=======
+>>>>>>> 3abc268a29bb81c70aa541d007b33e1a4fbb13af
