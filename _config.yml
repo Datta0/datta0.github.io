@@ -94,12 +94,12 @@ paginate: 10
 markdown: kramdown
 kramdown:
   input: GFM
-
 # ------------ The following options are not recommended to be modified ------------------
 
 kramdown:
+  footnote_backlink: "&#8617;&#xfe0e;"
   syntax_highlighter: rouge
-  syntax_highlighter_opts:   # Rouge Options › https://github.com/jneen/rouge#full-options
+  syntax_highlighter_opts: # Rouge Options › https://github.com/jneen/rouge#full-options
     css_class: highlight
     # default_lang: console
     span:
@@ -112,7 +112,6 @@ collections:
   tabs:
     output: true
     sort_by: order
-
 
 defaults:
   -
@@ -140,6 +139,7 @@ defaults:
       permalink: /:title/
       dynamic_title: true    # Hide title in mobile screens.
 
+
 sass:
   style: compressed
 
@@ -161,7 +161,9 @@ exclude:
   - LICENSE
   - gulpfile.js
   - node_modules
-  - '*.json'
+  - purgecss.js
+  - rollup.config.js
+  - "package*.json"
 
 jekyll-archives:
   enabled: [categories, tags]
