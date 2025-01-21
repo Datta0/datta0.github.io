@@ -1,3 +1,11 @@
+
+# hidden files
+.*
+!.git*
+!.editorconfig
+!.nojekyll
+!.travis.yml
+
 # Bundler cache
 .bundle
 vendor
