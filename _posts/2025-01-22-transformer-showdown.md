@@ -4,9 +4,11 @@ title: Transformer showdown MHA vs MLA vs nGPT vs Differential Transformer
 description: Comparing various transformer architectures like MHA, GQA, Multi Latent Attention, nGPT, Differential Transformer.
 date: 2025-01-22 20:27 +0530
 categories: [Transformer, Architectures]
-tags: [MLA, MHA, GQA, Multi Latent Attention, nGPT, Differential Transformer]
-render_with_liquid: false
+tags: [MLA, MHA, GQA, Multi Latent Attention, nGPT, Differential Transformer,kv cache, activations, memory, trainig, nanoformer]
 math: true
+image:
+  path: /assets/img/blogs/transformer_showdown/attn_variants.png
+  alt: Transformer and Attention variants
 ---
 
 # Transformer Showdown

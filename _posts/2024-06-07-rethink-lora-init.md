@@ -7,6 +7,9 @@ categories: [LoRA, Fine tuning, LLM]
 tags: [LoRA, Fine tuning, LLM]
 render_with_liquid: false
 math: true
+image:
+  path: /assets/img/blogs/know_lora/lora.png
+  alt: LoRA Fine tuning, modification, analysis and findings
 ---
 
 
