@@ -1,6 +1,5 @@
 ---
 layout: compress
-# WARNING: Don't use '//' to comment out code, use '{% comment %}' and '{% endcomment %}' instead.
 ---
 
 {%- comment -%}
