@@ -202,7 +202,7 @@ _MHA vs GQA vs MQA vs MLA_
     ![Differential Transformer](assets/img/blogs/transformer_showdown/diff_transformer.png)
     _Differntial Transformer_
 
-    - Here owing to having two attention units, the number of paramters, activations and KVCache requirement goes up by a factor of 2 each as compared to GQA.
+    - Even though attention units, [each attention head is half the dimension as original](https://github.com/microsoft/unilm/blob/7067d6b4ec0b44fd38e29ab3658765abcd9c7441/Diff-Transformer/multihead_diffattn.py#L50), so the number of paramters, activations and KVCache requirement is the same as that of GQA.
 
 - ### nGPT
     Introduced in a [2024 paper from NVIDIA](https://arxiv.org/abs/2410.01131). The main idea is, if normalisation layers are so important to the performance of deep networks and LLMs, why not make normalistion mathemtically implicit to the network. Given this assumption, at every step, we try to make sure we're interacting with normalized vectors and only normalised vectors are passed on after every step. This too is said to improve convergence. We discussed this in great detail in one of our other blogs on substack, [check it out.](https://datta0.substack.com/i/151875954/ngpt-normalized-transformer)
