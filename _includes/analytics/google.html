@@ -1,5 +1,4 @@
-<!-- Global site tag (gtag.js) - Google Analytics -->
-<script defer src="https://www.googletagmanager.com/gtag/js?id={{ site.analytics.google.id }}"></script>
+<script async src="https://www.googletagmanager.com/gtag/js?id={{ site.google_analytics.id }}"></script>
 <script>
   document.addEventListener('DOMContentLoaded', () => {
     window.dataLayer = window.dataLayer || [];
@@ -8,6 +7,6 @@
     }
 
     gtag('js', new Date());
-    gtag('config', '{{ site.analytics.google.id }}');
+    gtag('config', '{{ site.google_analytics.id }}');
   });
 </script>
