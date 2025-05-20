@@ -159,7 +159,7 @@ exclude:
   - gulpfile.js
   - node_modules
   - purgecss.js
-  - rollup.config.js
+  - "*.config.js"
   - "package*.json"
 
 jekyll-archives:
