@@ -1,4 +1,3 @@
-
 # hidden files
 .*
 !.git*
@@ -34,3 +33,14 @@ package-lock.json
 _sass/vendors
 assets/js/dist
 assets/lib
+
+# Chirpy
+.travis.yml
+bin/
+assets/js/dist/
+Gemfile.lock
+*.gem
+*.gemspec
+docs/
+tools/
+venv/
