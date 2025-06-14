@@ -8,7 +8,7 @@ tags: [Attention, Transformer, FFNN, Math]
 render_with_liquid: false
 math: true
 image:
-  path: /assets/img/blogs/transformer_imagined/transformer_imagined.png
+  path: /assets/img/blogs/transformer_imagined/transformer_imagined.jpg
   alt: Attention and Transformer imagined from the ground up
 ---
 
@@ -188,7 +188,7 @@ $$
 Here S (and hence S') denotes the consolidated similarities aka average-weights matrix. S[i][j] denotes the importance that we assign to the $j$-th word for predicting the $i$-th word.
 The `mask` here is to ensure that we don't cheat and look into the future. It is a lower triangular matrix of shape $(n, n)$. This means, the importance that we assign to a future word for predicting the current word is 0.
 
-![Attention Math and Visualisation](assets/img/blogs/transformer_imagined/attention.png)
+![Attention Math and Visualisation](assets/img/blogs/transformer_imagined/attention.jpg)
 _Attention Math and Visualisation_
 
 
@@ -202,7 +202,7 @@ Generally speaking, you call each such relation an Attention Head, you denote th
 
 This image from DeepSeek V2 paper gives a crisp view of the above mentioned architectures.
 
-![MHA vs GQA vs MQA vs MLA](assets/img/blogs/transformer_showdown/attn_variants.png)
+![MHA vs GQA vs MQA vs MLA](assets/img/blogs/transformer_showdown/attn_variants.jpg)
 _MHA vs GQA vs MQA vs MLA_
 
 ## MLP or FFNN
