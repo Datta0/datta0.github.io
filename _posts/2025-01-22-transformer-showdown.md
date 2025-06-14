@@ -7,7 +7,7 @@ categories: [Transformer, Architectures]
 tags: [MLA, MHA, GQA, Multi Latent Attention, nGPT, Differential Transformer,kv cache, activations, memory, trainig, nanoformer]
 math: true
 image:
-  path: /assets/img/blogs/transformer_showdown/attn_variants.png
+  path: /assets/img/blogs/transformer_showdown/attn_variants.jpg
   alt: Transformer and Attention variants
 ---
 
@@ -149,7 +149,7 @@ So without further ado, lets get comparing.
 
     Last year, I was playing around with llama 2 and mistral family of models. I tried to understand why some models perform better than the others from a mathematical perspective. I was fiddling with eigen values of each of the weight matrices. What I observed was very interesting. All the models exhibit some sort of low rank behaviour, where 50% of the eigen values explain 90% of the variance ([Read for reference](https://stats.stackexchange.com/a/171599)). So essentially, we can compress the keys and values (evne queries) to atleast half their original size without losing much information. This can be thought of as an explanation to why MLA might work. The compression ratio is higher than 2:1 but you get the idea. 
 
-    ![Share of eigen values contributing to 90% in weight](assets/img/blogs/transformer_showdown/llama_eigen.png)
+    ![Share of eigen values contributing to 90% in weight](assets/img/blogs/transformer_showdown/llama_eigen.jpg)
     _Share of eigen values contributing to 90% in weight_
 
     $$ 
@@ -182,7 +182,7 @@ So without further ado, lets get comparing.
     A = [A_1, A_2, ..., A_h] \space @ \space  Wo
     $$
 
-    ![Multi Latent Attention formulae](assets/img/blogs/transformer_showdown/mla.png)
+    ![Multi Latent Attention formulae](assets/img/blogs/transformer_showdown/mla.jpg)
     _Multi Latent Attention formulae_
 
     **KVCache**: Each compressed vector is of size `c` per token per layer per group. Hence a total of $$n*g*c*t$$. Keys and values are inferred by decompressing this ($$k_t^C, v_t^C$$). A compression of `2*d/c` times compared to MHA. Note that in final implementation there's a nuance of additional heads (and hence keys and values) for RoPE. That adds a little more overhead. So the compression ratio essentially becomes $$2*d/(c+r)$$ where r is the RoPE key dimension.
@@ -190,7 +190,7 @@ So without further ado, lets get comparing.
 
 This image from DeepSeek V2 paper gives a crisp view of the above mentioned architectures.
 
-![MHA vs GQA vs MQA vs MLA](assets/img/blogs/transformer_showdown/attn_variants.png)
+![MHA vs GQA vs MQA vs MLA](assets/img/blogs/transformer_showdown/attn_variants.jpg)
 _MHA vs GQA vs MQA vs MLA_
 
 
@@ -199,7 +199,7 @@ _MHA vs GQA vs MQA vs MLA_
 - ### Differential Transformer
     Introduced in a [2024 paper from Microsoft](https://arxiv.org/abs/2410.05258). The main motivation is that attention scores have a lot of noise. So if we have two subnetworks calculating attention, subtracting one from the other would act as subtracting random noise from information induced with noise. This helps control the attention scores and logits (outliers are of lesser magnitude). This is said to improve convergence. We discussed this in great detail in one of our other blogs on substack, [check it out.](https://datta0.substack.com/i/150138108/differential-transformer)
 
-    ![Differential Transformer](assets/img/blogs/transformer_showdown/diff_transformer.png)
+    ![Differential Transformer](assets/img/blogs/transformer_showdown/diff_transformer.jpg)
     _Differntial Transformer_
 
     - Even though attention units, [each attention head is half the dimension as original](https://github.com/microsoft/unilm/blob/7067d6b4ec0b44fd38e29ab3658765abcd9c7441/Diff-Transformer/multihead_diffattn.py#L50), so the number of paramters, activations and KVCache requirement is the same as that of GQA.
@@ -207,7 +207,7 @@ _MHA vs GQA vs MQA vs MLA_
 - ### nGPT
     Introduced in a [2024 paper from NVIDIA](https://arxiv.org/abs/2410.01131). The main idea is, if normalisation layers are so important to the performance of deep networks and LLMs, why not make normalistion mathemtically implicit to the network. Given this assumption, at every step, we try to make sure we're interacting with normalized vectors and only normalised vectors are passed on after every step. This too is said to improve convergence. We discussed this in great detail in one of our other blogs on substack, [check it out.](https://datta0.substack.com/i/151875954/ngpt-normalized-transformer)
 
-    ![nGPT formulae](assets/img/blogs/transformer_showdown/ngpt.png)
+    ![nGPT formulae](assets/img/blogs/transformer_showdown/ngpt.jpg)
     _nGPT formulae_
 
     - Apart from more normalisations there isn't much that would meaningfully contribute to parameters or activations or KVCache as compared to GQA.
@@ -218,14 +218,14 @@ So now that the introductions are out of the way, the burning question is do the
 
 Well the answer is nuanced. Let's see how they stack up.
 
-![Train losses on wikipedia dataset](assets/img/blogs/transformer_showdown/wiki_train_loss.png)
+![Train losses on wikipedia dataset](assets/img/blogs/transformer_showdown/wiki_train_loss.jpg)
 _Train losses on wikipedia dataset_
 
 I started with a model that has `16` layers, with a hidden size of `1536`. The MHA variant had `16` attention heads (hence 16 key value heads) while the GQA variant had `4` key value heads. The MLP block had an intermediate size of `2048`. I used [GPT2 tokenizer from NeelNanda](https://huggingface.co/NeelNanda/gpt-neox-tokenizer-digits) which is modified to treat numbers as individual tokens.
 
 Looks like nGPT outperforms the rest by a decent margin on a [100k sample of the wikipedia dataset](https://huggingface.co/datasets/imdatta0/wikipedia_en_sample)
 
-![Train losses on minipile dataset](assets/img/blogs/transformer_showdown/minipile_train_loss.png)
+![Train losses on minipile dataset](assets/img/blogs/transformer_showdown/minipile_train_loss.jpg)
 _Train losses on minipile dataset_
 
 On the [minipile dataset](https://huggingface.co/datasets/jeankaddour/minipile) which is approximately 10x larger than the wiki data, I saw that there isn't much to choose between MLA, MHA, GQA and DiffAttention. Which is great since GQA uses 4x less keys and values resulting in 4x less KVCache. Surprisingly, nGPT's losses seem to go down as low as 0.2 when the others hover around 3. I tried to repeat the experiement multiple times with multiple configs only to find a similar loss curve. I also checked validation loss for all the models, they look very similar to train loss curves so there isn't much value in plotting those. We will have to look into why this is the case but it definitely is fascinating. 

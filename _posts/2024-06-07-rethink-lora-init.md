@@ -8,7 +8,7 @@ tags: [LoRA, Fine tuning, LLM]
 render_with_liquid: false
 math: true
 image:
-  path: /assets/img/blogs/know_lora/lora.png
+  path: /assets/img/blogs/know_lora/lora.jpg
   alt: LoRA Fine tuning, modification, analysis and findings
 ---
 
@@ -198,7 +198,7 @@ optim=f"paged_adamw_32bit",
 ```
 
 Note: I'm only tracking eval loss and performance on downstream tasks is a thing for another day :)
-![Comparing losses of different initialisations](/assets/img/blogs/know_lora/init_losses_sample.png)
+![Comparing losses of different initialisations](/assets/img/blogs/know_lora/init_losses_sample.jpg)
 
 wandb render of the same
 <iframe src="https://wandb.ai/imdatta0/lora_inits/reports/LoRA-initialisations--Vmlldzo4MjQ4Njg0" style="border:none;height:512px;width:100%">
