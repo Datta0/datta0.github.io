@@ -150,6 +150,14 @@ Note: Technically speaking, we can leave the vector in any dimensions and then t
 
 We can define the output vector as:
 
+$$
+\begin{align*}
+w'_j = \sum_{i=1}^n \underbrace{\overbrace{w_n M_q}^{\begin{array}{c}\text{transformation}\\1\end{array}} \cdot \overbrace{(w_i M_k)^T}^{\begin{array}{c}\text{transformation}\\2\end{array}}}_{\text{similarity}} (w_i M_v) \in \mathbb{R}^h \quad \text{ for } j \in [1, n_h]  \\
+w = [w'_1, w'_2, \ldots, w'_{n_h}] \in \mathbb{R}^d \quad \text{ (concatenate all the parts) }
+\end{align*}
+$$
+
+
 One small addition is that we need to normalise the weights. We need to ensure that all the weights sum to 1. We also need to maintain the monotonicity of the weights. So higher similarity scores should lead to higher weights. This is where softmax comes in. It converts a set of scores into a set of probabilities. A crucial detail is that the dot product scores are scaled by the square root of the key dimension, $\sqrt{d_k}$. This prevents the dot product values from becoming too large, which would result in very small gradients for the softmax function, making training unstable. It is more of a training thing and a story for another day.
 
 $$
@@ -172,7 +180,7 @@ $$
 And here's the consolidated equation with annotations:
 
 $$
-O = \underset{\text{Getting back to input space}}{\underbrace{\underset{\text{concat heads}}{\underbrace{\text{concat} \left( \underset{\text{normalising weights}}{\underbrace{\text{softmax}(\frac{\underset{\text{transformation1}}{\underbrace{X M_k}} \underset{\text{transformation2}}{\underbrace{(X M_q)^T}}}{\sqrt{d_k}} + \underset{\text{no cheating}}{\underbrace{\text{mask}}})}} \underset{\text{transformation3}}{\underbrace{(X M_v)}} \right)}} M_o}}
+O = \underset{\text{Getting back to input space}}{\underbrace{\underset{\text{concat heads}}{\underbrace{\text{concat} \left( \underset{\text{weighted average}}{\underbrace{\underset{\text{normalising weights}}{\underbrace{\text{softmax} \left( \underset{\text{similarity}}{\underbrace{ \frac{\overbrace{(X M_q)}^{\text{transform1}} \overbrace{(X M_k)^T}^{\text{transform2}}}{\sqrt{d_k}} + \overbrace{\text{mask}}^{\text{no cheating}}}} \right)}} \underset{\text{transformation3}}{\underbrace{(X M_v)}}}} \right)}} M_o}}
 $$
 
 Here S (and hence S') denotes the consolidated similarities aka attention scores matrix. S[i][j] denotes the importance that we assign to the $j$-th word for predicting the $i$-th word.
