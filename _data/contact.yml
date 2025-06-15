@@ -5,6 +5,7 @@
 
 - type: twitter
   icon: "fa-brands fa-x-twitter"
+  url: 'https://twitter.com/im_datta0'
 
 - type: email
   icon: "fas fa-envelope"
