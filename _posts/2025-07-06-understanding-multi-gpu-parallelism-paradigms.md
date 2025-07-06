@@ -8,7 +8,7 @@ pin: false
 toc: true
 render_with_liquid: false
 math: true
-image: 
+image:
   path: /assets/img/blogs/parallelism/parallelism.jpg
   alt: GPU parallelism and LLMs
 ---
@@ -116,17 +116,17 @@ Each GPU computes a partial result of the same dimension \\((m \times n)\\). The
 Now, let's apply the same element-level analysis to **Row Parallelism**. Here, the situation is reversed. The summation over `k` is split across the GPUs for *every single element* \\(c_{ij}\\).
 
 $$
-c_{ij} = \sum_{k} a_{ik} \cdot b_{kj} = \underbrace{\sum_{k=1}^{k/2} a_{ik} \cdot b_{kj}}_{\text{GPU0}} + \underbrace{\sum_{k=k/2+1}^{k_{dim}} a_{ik} \cdot b_{kj}}_{\text{GPU1}}
+c_{ij} = \sum_{k} a_{ik} \cdot b_{kj} = \underbrace{\sum_{k=1}^{k/2} a_{ik} \cdot b_{kj}}_{\text{GPU0}} + \underbrace{\sum_{k=k/2+1}^{k} a_{ik} \cdot b_{kj}}_{\text{GPU1}}
 $$
 
 Every element of `C` is the result of an `All-Reduce` operation that sums the partial results from each GPU.
 - **For $c_{1,1}$ (top-left):**
 $$
-c_{1,1} = \underbrace{\sum_{k=1}^{k/2} a_{1k}b_{k1}}_{\text{GPU0}} + \underbrace{\sum_{k=k/2+1}^{k_{dim}} a_{1k}b_{k1}}_{\text{GPU1}}
+c_{1,1} = \underbrace{\sum_{k=1}^{k/2} a_{1k}b_{k1}}_{\text{GPU0}} + \underbrace{\sum_{k=k/2+1}^{k} a_{1k}b_{k1}}_{\text{GPU1}}
 $$
 - **For $c_{1,n}$ (top-right):**
 $$
-c_{1,n} = \underbrace{\sum_{k=1}^{k/2} a_{1k}b_{kn}}_{\text{GPU0}} + \underbrace{\sum_{k=k/2+1}^{k_{dim}} a_{1k}b_{kn}}_{\text{GPU1}}
+c_{1,n} = \underbrace{\sum_{k=1}^{k/2} a_{1k}b_{kn}}_{\text{GPU0}} + \underbrace{\sum_{k=k/2+1}^{k} a_{1k}b_{kn}}_{\text{GPU1}}
 $$
 
 You get the idea...
@@ -191,7 +191,7 @@ _Megatron LLM_
 
 If you have `n` GPUs, the tensor parallel load is divided by `n` per GPU. So the latency should ideally go down `n` times. But communication is an expensive part. So if you load the same model on same class of GPU using varying tensor parallel degrees, aka 1,2,4 and 8, what I have noticed is that 1 GPU would perform better at latency than 2 GPUs. At 4 the tides generally tend to turn in favour of it over the 1 GPU case. This is due to the multi fold gains you get by distributing the load on even more GPUs. Do note that this is just an observation.
 
-## A rubrik
+## A rubric
 
 Good, we've looked at the paradigms. But how does one decide when to use what? The key things to note should be
 1. Avoid communication if possible. 
@@ -205,4 +205,7 @@ Any time you spend performing communication is time un-utilised for computation.
 
 ## Conclusion
 
-Today we've looked at how once can utilise multiple GPUs to their advantage especially in case of LLMs for inference. This is a very important in the modern day and age where models keep getting bigger and better increasing the demand for more and more memory at inference time more so thanks to reasoning and longer output lengths. I'm hoping that I have made you, the reader, understand the parallelisms from a holistic perspective and the pros and cons of each. With that, I sign off for the day. Ta-ta.
+Today we've looked at how once can utilise multiple GPUs to their advantage especially in case of LLMs for inference. This is a very important in the modern day and age where models keep getting bigger and better increasing the demand for more and more memory at inference time more so thanks to reasoning and longer output lengths.
+That being said, we haven't yet talked about how the communication is done between the GPUs. That is a different beast in itself. Also we haven't yet touched upon the recent paradigms like Sequence Parallelism and Context Parallelism. Then comes parallelism strategies for training. We'd go over those too someday.
+
+I'm hoping that I have made you, the reader, understand the parallelisms from a holistic perspective and the pros and cons of each. With that, I sign off for the day. Ta-ta.
