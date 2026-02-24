@@ -163,15 +163,14 @@ From the config:
 - $k = 8$ (`num_experts_per_tok`)
 - $d_e = 768$ (`moe_intermediate_size`)
 
-Equivalent dense intermediate size:  
-$d_{\text{mlp}} = n d_e = 128 \cdot 768 = 98{,}304$.
-
+Equivalent dense intermediate size:  $d_{\text{mlp}} = n d_e = 128 \cdot 768 = 98304$.
 - **Dense ops (dominant matmuls):**  
-  $3 \cdot s\, d\, d_{\text{mlp}} \approx 3 \cdot s \cdot 2048 \cdot 98{,}304$
-
+  $3 \cdot s\, d\, d_{\text{mlp}} \approx 3 \cdot s \cdot 2048 \cdot 98304$
 - **MoE ops:**
   - Routing: $s\, d\, n = s \cdot 2048 \cdot 128$
   - Experts: $3 \cdot s\, d\, k\, d_e = 3 \cdot s \cdot 2048 \cdot 8 \cdot 768$
+
+That is a **$\sim93.7\%$ reduction** in FFN FLOPs against the naive dense layer counterpart!
 
 ### 2. GPT OSS 20B
 
@@ -182,15 +181,14 @@ From the config:
 - $k = 4$ (`num_experts_per_tok`)
 - $d_e = 2880$ (`intermediate_size` per expert)
 
-Equivalent dense intermediate size:  
-$d_{\text{mlp}} = n d_e = 32 \cdot 2880 = 92{,}160$.
-
+Equivalent dense intermediate size:  $d_{\text{mlp}} = n d_e = 32 \cdot 2880 = 92160$.
 - **Dense ops (dominant matmuls):**  
-  $3 \cdot s\, d\, d_{\text{mlp}} \approx 3 \cdot s \cdot 2880 \cdot 92{,}160$
-
+  $3 \cdot s\, d\, d_{\text{mlp}} \approx 3 \cdot s \cdot 2880 \cdot 92160$
 - **MoE ops:**
   - Routing: $s\, d\, n = s \cdot 2880 \cdot 32$
   - Experts: $3 \cdot s\, d\, k\, d_e = 3 \cdot s \cdot 2880 \cdot 4 \cdot 2880$
+
+This yields a **$\sim87.5\%$ compute reduction** in the FFN block while retaining a massive $92$K parameter width per token routing!
 
 </details>
 
