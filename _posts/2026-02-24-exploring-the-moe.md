@@ -2,14 +2,14 @@
 title: Exploring the Mixture of Experts
 description: An intuitive build up to Mixture of Experts
 author: datta0
-date: 2025-06-14T14:30:00+05:30
+date: 2026-02-24T14:30:00+05:30
 categories: [Mixture of Experts, Transformer, FFNN, Math]
 tags: [Mixture of Experts, Transformer, FFNN, Math]
 render_with_liquid: false
 draft: true
 math: true
 image:
-  path: /assets/img/blogs/mixture_of_experts/mixture_of_experts.jpg
+  path: /assets/img/blogs/moe_journey/moe_header.jpg
   alt: Mixture of Experts imagined from the ground up
 ---
 
@@ -17,7 +17,7 @@ image:
 
 ## Introduction
 
-Previously we have talked about [Transformer and attention re-imagined](https://datta0.github.io/posts/transformer-imagined/) from the first principles. While that gives a very good understanding of how transformers work, specifically the attention mechanism, there has been a lot of progress ever since. One of the under-represented parts of the transformer is the FFNN. 
+Previously we have talked about [Transformer and attention being re-imagined](https://datta0.github.io/posts/transformer-imagined/) from the first principles. While that gives a very good understanding of how transformers work, specifically the attention mechanism, there has been a lot of progress ever since. One of the under-represented parts of the transformer is the FFNN. 
 MoE or mixture of experts is a natural continuation of the same. Today we'll try to reimagine the same.
 
 ## FFNN
@@ -113,6 +113,9 @@ $$
 \end{aligned}
 $$
 
+
+Of course a lot of it hinges on ratio between `k` and `n`. From a hardware and performance standpoint, it relies on the ability to parallelise the computation of those `k` buckets efficiently. For inference, this is trivial as we only need to worry about one token and its corresponding experts. But for training, we need to parallelise across tokens and experts. Things can get really tricky here. 
+
 I'd leave it to you to compare these for a typical MoE config like [Qwen3-30B-A3B](https://huggingface.co/unsloth/Qwen3-30B-A3B-Thinking-2507/blob/main/config.json) or [GPT OSS 20B](https://huggingface.co/unsloth/gpt-oss-20b/blob/main/config.json) and verify for yourself that this makes sense mathematically.
 
 <details>
@@ -154,8 +157,7 @@ Here, the equivalent dense $d_{mlp} = n \cdot d_{e} = 32 \cdot 2880 = 92,160$.
 This yields a **$\sim87.5\%$ compute reduction** in the FFN block while retaining a massive $92$K parameter width per token routing!
 
 </details>
-
-Of course a lot of it hinges on ratio between `k` and `n`. From a hardware and performance standpoint, it relies on the ability to parallelise the computation of those `k` buckets efficiently. For inference, this is trivial as we only need to worry about one token and its corresponding experts. But for training, we need to parallelise across tokens and experts. Things can get really tricky here. 
+<br> 
 
 ![MoE](assets/img/blogs/moe_journey/moe.jpg)
 _MoE visualised_
@@ -168,7 +170,7 @@ $$
 scores = X @ W_{router} \\
 out[i] = (\text{SiLU}(X \cdot W_{gate}[i]) * (X\cdot W_{up}[i])) \cdot W_{down}[i] \quad \in \mathbb{R}^{d} \quad \quad | \quad \mathcal{O}(d \cdot k) \\
 
-out = \sum_{i \in \text{TopK}} out[i] \quad \in \mathbb{R}^{d} \quad \quad | \quad \mathcal{O}(d \cdot k) $$
+out = \sum_{i \in \text{TopK}} scores[i] \cdot out[i] \quad \in \mathbb{R}^{d} \quad \quad | \quad \mathcal{O}(d \cdot k) $$
 
 
 ## Training
@@ -177,14 +179,17 @@ Sweet and simple. One should ideally forward pass through all the chosen `k` exp
 
 For trainig, you have `s` tokens instead of `1` like we discussed above. Each token has its own `k` preferred experts among the `n`. So the task becomes more tricky to first calculate the router scores, find out top-k per token, then somehow pass the set of appropriate tokens for each expert. pytorch has an operation to do all this parallelly called [`torch._grouped_mm`](https://docs.pytorch.org/docs/main/generated/torch.nn.functional.grouped_mm.html). We also made LoRA training on MoE more efficient at [Unsloth](https://unsloth.ai/). [Check out here](https://unsloth.ai/docs/new/faster-moe).
 
-One caveat we've been brushing under the rug so far, what if an expert is not chosen by any token? It is not involved in the forward pass, hence wouldn't be involved in the backward pass either. So it gets no chance to get better to be potentially be preferred by tokens in the future. This is a vicious cycle. So expert utilisation being (approximately) uniform is an important thing. There are a few ways to enfoce this
+One caveat we've been brushing under the rug so far, what if an expert is not chosen by any token? It is not involved in the forward pass, hence wouldn't be involved in the backward pass either. So it gets no chance to get better to be potentially be preferred by tokens in the future. This is a vicious cycle. So expert utilisation being (approximately) uniform is an important thing. There are a few ways to enfoce this.
+
+We will talk about these more at a later time. For now we just introduce the ideas to the curious minds.
+
 
 ### Auxiliary Loss
 Most of the MoE works add an auxiliary loss to the main loss. This loss is calculated on the router scores and is used to encourage the router to distribute the tokens evenly among the experts. One in theory can compare the router's current distribution to the uniform distribution and add a difference as a loss. 
 
 But there's a small problem with adding such a bias. Natural language potentially has a long tail. Some experts might be specialising in certain domains. Forcing a generic language expert to be used as much as the "coding" expert or "math" expert might not be a good idea. 
 
-### Bias
+### Router Bias
 Deepseek V3 again famously implemented this to counteract the imbalance. Instead of adding an auxiliary loss, we modify the router scores so that we reduce the scores of the routers that are heavily being picked historically while increasing the ones that are not picked much. 
 
 $$
@@ -203,6 +208,20 @@ Each expert has its own ranking mechanism and picks only the top-k among the man
 
 Assume each expert picks only 1 token. If expert 1 prefers token a over token b, then in presence of both the tokens, expert 1 will pick `a`. But if `a` is not present expert 1 will pick `b`. So essentially we're leaking information to `b` whether `a` is present in the sequence or not. Leaking because, `b` can be earlier in the sequence than `a`. This breaks causality. Perhaps potentially (among the many reasons) why llama 4 is not up to the mark.
 
+## Shared Expert
+Some models use a shared expert which is used by all the tokens. This is done to make sure that common knowledge is shared across all the tokens and there is no contention to choose between a common knowledge expert and a specialized expert.
+
+$$
+
+scores = X @ W_{router} \quad gate_i = SiLU(X \cdot W_{gate}[i]) \quad up_i = X \cdot W_{up}[i] \\
+gate_{shared} = SiLU(X \cdot W_{gate_{shared}}) \quad up_{shared} = X \cdot W_{up_{shared}} \\
+out[i] = (gate_i * up_i) \cdot W_{down}[i] \\
+out_{shared} = (gate_{shared} * up_{shared}) \cdot W_{down_{shared}} \\
+out = out_{shared} + \sum_{i \in \text{TopK}} scores[i] \cdot out[i]
+$$
+
+
+
 ## Parallelism in MoE: Expert Parallelism
 
 So in a [previous blog](https://datta0.github.io/posts/understanding-multi-gpu-parallelism-paradigms/), we have talked about parallelism strategies and how they can be applied to Transformers, both attention and MLP. MoE is no exception to this. It offers us more flexibility in terms of parallelism strategies. 
@@ -213,7 +232,29 @@ One can place different experts (or different groups of experts) onto different 
 
 When you do expert parallelism, you can either replicate the attention modules across the expert parallelism degree or you can split them and use [tensor parallelism](https://datta0.github.io/posts/understanding-multi-gpu-parallelism-paradigms/#tensor-parallelism) as discussed in the previous blog. It all boils down to your GPU capacity. If you choose to replicate the attention modules, you are pretty much doing [Data Parallel](https://datta0.github.io/posts/understanding-multi-gpu-parallelism-paradigms/#data-parallelism) across GPUs for the attention modules. Then you can distribute the tokens to the corresponding GPUs according to their choice of experts. Once the computation is done, you can gather your share of tokens from all the GPUs and then go ahead with your own stuff for the later computations.
 
+Now that you know expert parallelism exists, do you see why the token distribution being uniform is crucial even from a performance standpoint? Uniform distribution ensures all the experts compute their share together parallelly and there's not time wasted waiting for an expert's computation. It all fits well.
+
 Note that because this happens for every layer, I wouldn't think it is a smart idea to parallelise this across nodes. This is great for parallelising within a node across the GPUs which are connected by high speed bandwidth like PCIe or NVLink.
 
-![Expert parallelism](assets/img/blogs/moe_journey/expert_parallelism.jpg)
+![Expert parallelism](assets/img/blogs/moe_journey/expert_parallel.jpg)
 _Expert parallelism_
+
+
+## So why go through all this hassle?
+So why go through all this hassle if it doesn't translate to any gains right? But there is a lot to be gained here. At decode time, we're only activating `k` out of the `n` experts. So we're saving on a lot of compute and memory bandwidth thus saving us inference time. Note that we haven't sacrificed any of the model's capacity. We've just made it smartly choose what it needs to use. At inference time, it is equivalent compute to that of a model with much fewer parameters.
+
+In traditional terminology, because you are hitting/activating only `k` out of the `n` experts, you count the number of parameters you touch in the path as the effective number of parameters often called as **Activated Parameters**.
+
+When you see a model name like [unsloth/Qwen3-30B-A3B-Instruct-2507](https://huggingface.co/unsloth/Qwen3-30B-A3B-Thinking-2507/blob/main/config.json), the total number of parameters, 30B, is followed by the number of activated parameters, A3B. So only 3B parameters are activated per token. Pretty cool huh!
+
+## Some more details
+We still have to take a lot of decisions here. What is the optimal `k` and `n`? Typically in the earlier works a ratio of 1:8 was used for `k:n`. But recent works have shown that we can do better. For a fixed number of total parameters and activated paramters, the sparser you choose the better aka lower `k` and higher `n`. This is why you see [128](https://huggingface.co/unsloth/Qwen3-30B-A3B-Thinking-2507/blob/main/config.json#L21) 256 and even [512](https://huggingface.co/unsloth/Qwen3.5-397B-A17B/blob/main/config.json#L95) experts in recent times.
+
+We just briefly touched upon load balancing but it is a deep topic in itself. Sometimes, when an expert is overwhelmed with tokens, some tokens are dropped to avoid going over the capacity and potentially causing OOMs or just general slowdown. 
+
+Sometimes (albeit not a lot), instead of training MoE from scratch, what people (read: Mixtral) do is take a pre-trained dense model and convert it into an MoE model. They do this by replicating the MLP layers and then replacing the original MLP layer with a router and the replicated layers. So the attention weights and the MLP weights are from previously trained dense model and router takes care of dynamically routing the tokens to new "expert" MLPs.
+
+One mroe thing to note is that not all layers need to be MoE. There are some models that mix and match both like the [GLM-4.7-Flash](https://github.com/huggingface/transformers/blob/0ff46c9015474ec2da5e364273bd393d8b5176e0/src/transformers/models/glm4_moe/modeling_glm4_moe.py#L435-L438).
+
+## Conclusion
+With this I leave you with a good motivation to appreciate MoE and what they bring to the table. Also a little understanding of the challenges of training and serving them and how to tackle those. We will go into more details in future blogs. Thanks for reading thus far. If you have any comments, concerns, questions, or suggestions, please feel free to reach out to me. You can find me on [LinkedIn](https://www.linkedin.com/in/datta0/) or [Twitter](https://twitter.com/im_datta0). I'll leave it here for now. Sayonara :)
