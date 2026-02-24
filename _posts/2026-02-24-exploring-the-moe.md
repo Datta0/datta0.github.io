@@ -95,6 +95,7 @@ u &= X @ W'_{up}[\text{TopK}]   &&\in \mathbb{R}^{n \times k \cdot d_e} &&\quad 
 s &= \text{SiLU}(g)             &&                                      &&\quad | \quad \mathcal{O}(d \cdot k \cdot d_e) \\
 gu &= s \odot u                 &&\in \mathbb{R}^{n \times k \cdot d_e} &&\quad | \quad \mathcal{O}(d \cdot k \cdot d_e) \\
 \text{out} &= gu @ W'_{down}[\text{TopK}] &&\in \mathbb{R}^{n \times d} &&\quad | \quad \mathcal{O}(d \cdot k \cdot d_e) \\
+\text{result} &= \sum_{i \in \text{TopK}} \text{out}_{i} \odot \text{scores}_{i} &&\in \mathbb{R}^{d} &&\quad | \quad \mathcal{O}(d \cdot k) \\
 \end{aligned}
 $$
 
@@ -113,3 +114,106 @@ $$
 $$
 
 I'd leave it to you to compare these for a typical MoE config like [Qwen3-30B-A3B](https://huggingface.co/unsloth/Qwen3-30B-A3B-Thinking-2507/blob/main/config.json) or [GPT OSS 20B](https://huggingface.co/unsloth/gpt-oss-20b/blob/main/config.json) and verify for yourself that this makes sense mathematically.
+
+<details>
+<summary><b>For the lazy reader, here's the math (click to expand)</b></summary>
+<br>
+
+### 1. [Qwen3-30B-A3B](https://huggingface.co/unsloth/Qwen3-30B-A3B-Thinking-2507/blob/main/config.json)
+From the config:
+- $d = 2048$ (`hidden_size`)
+- $n = 128$ (`num_experts`)
+- $k = 8$ (`num_experts_per_tok`)
+- $d_{e} = 768$ (`moe_intermediate_size`)
+
+This means the equivalent naive MLP intermediate size $d_{mlp} = n \cdot d_e = 128 \cdot 768 = 98,304$. Let's plug these into our equations:
+
+- **Dense operations:** $5 \cdot d \cdot d_{mlp} = 5 \cdot 2048 \cdot 98304 \approx 1,006.6 \text{ M}$ operations ($\sim1 \text{ GOps}$ per token)
+- **MoE operations:** 
+  - Routing operations: $d \cdot n = 2048 \cdot 128 = 262,144$
+  - Expert operations: $5 \cdot d \cdot k \cdot d_e = 5 \cdot 2048 \cdot 8 \cdot 768 = 62,914,560$ 
+  - Total MoE ops $\approx 63.2 \text{ M}$ operations
+
+That is a **$\sim93.7\%$ reduction** in FFN FLOPs against the naive dense layer counterpart!
+
+### 2. [GPT OSS 20B](https://huggingface.co/unsloth/gpt-oss-20b/blob/main/config.json)
+From the config:
+- $d = 2880$ (`hidden_size`)
+- $n = 32$ (`num_local_experts`)
+- $k = 4$ (`num_experts_per_tok`)
+- $d_{e} = 2880$ (`intermediate_size` per expert)
+
+Here, the equivalent dense $d_{mlp} = n \cdot d_{e} = 32 \cdot 2880 = 92,160$.
+
+- **Dense operations:** $5 \cdot d \cdot d_{mlp} = 5 \cdot 2880 \cdot 92160 \approx 1,327 \text{ M}$ operations ($\sim1.33 \text{ GOps}$ per token)
+- **MoE operations:**
+  - Routing operations: $d \cdot n = 2880 \cdot 32 = 92,160$
+  - Expert operations: $5 \cdot d \cdot k \cdot d_{e} = 5 \cdot 2880 \cdot 4 \cdot 2880 = 165,888,000$
+  - Total MoE ops $\approx 166 \text{ M}$ operations
+
+This yields a **$\sim87.5\%$ compute reduction** in the FFN block while retaining a massive $92$K parameter width per token routing!
+
+</details>
+
+Of course a lot of it hinges on ratio between `k` and `n`. From a hardware and performance standpoint, it relies on the ability to parallelise the computation of those `k` buckets efficiently. For inference, this is trivial as we only need to worry about one token and its corresponding experts. But for training, we need to parallelise across tokens and experts. Things can get really tricky here. 
+
+![MoE](assets/img/blogs/moe_journey/moe.jpg)
+_MoE visualised_
+
+## Consolidation
+
+This is how the output is calculated for the MoE. `out[i]` is the output of the i'th expert. We multiply by the scores to respect the preference
+
+$$
+scores = X @ W_{router} \\
+out[i] = (\text{SiLU}(X \cdot W_{gate}[i]) * (X\cdot W_{up}[i])) \cdot W_{down}[i] \quad \in \mathbb{R}^{d} \quad \quad | \quad \mathcal{O}(d \cdot k) \\
+
+out = \sum_{i \in \text{TopK}} out[i] \quad \in \mathbb{R}^{d} \quad \quad | \quad \mathcal{O}(d \cdot k) $$
+
+
+## Training
+Inference is straightforward. You have a token; you get the preference scores for each of the buckets, called **experts**, and pick the top few among them to pass the activations through those experts. 
+Sweet and simple. One should ideally forward pass through all the chosen `k` experts parallelly.
+
+For trainig, you have `s` tokens instead of `1` like we discussed above. Each token has its own `k` preferred experts among the `n`. So the task becomes more tricky to first calculate the router scores, find out top-k per token, then somehow pass the set of appropriate tokens for each expert. pytorch has an operation to do all this parallelly called [`torch._grouped_mm`](https://docs.pytorch.org/docs/main/generated/torch.nn.functional.grouped_mm.html). We also made LoRA training on MoE more efficient at [Unsloth](https://unsloth.ai/). [Check out here](https://unsloth.ai/docs/new/faster-moe).
+
+One caveat we've been brushing under the rug so far, what if an expert is not chosen by any token? It is not involved in the forward pass, hence wouldn't be involved in the backward pass either. So it gets no chance to get better to be potentially be preferred by tokens in the future. This is a vicious cycle. So expert utilisation being (approximately) uniform is an important thing. There are a few ways to enfoce this
+
+### Auxiliary Loss
+Most of the MoE works add an auxiliary loss to the main loss. This loss is calculated on the router scores and is used to encourage the router to distribute the tokens evenly among the experts. One in theory can compare the router's current distribution to the uniform distribution and add a difference as a loss. 
+
+But there's a small problem with adding such a bias. Natural language potentially has a long tail. Some experts might be specialising in certain domains. Forcing a generic language expert to be used as much as the "coding" expert or "math" expert might not be a good idea. 
+
+### Bias
+Deepseek V3 again famously implemented this to counteract the imbalance. Instead of adding an auxiliary loss, we modify the router scores so that we reduce the scores of the routers that are heavily being picked historically while increasing the ones that are not picked much. 
+
+$$
+\text{scores} = \text{scores} + \text{bias} \\
+e_i = \text{number of tokens expert i sees} = \sum_{j=1}^{s} \mathbb{I}(i \in \text{TopK}(j)) \\
+\bar{e} = \text{expected number of tokens per expert} = \frac{s}{n} \\
+\text
+b_i = b_{i-1} + \lambda \cdot \text{sign}(e_i - \bar{e}) \\
+$$
+
+### Expert choice
+
+So far we've been talking about tokens picking experts which might lead to imbalance. But what if we flip the problem on its head? What if we let the experts pick the tokens? This is called expert choice routing famously used in Llama 4 family of models.
+
+Each expert has its own ranking mechanism and picks only the top-k among the many tokens. But this has a serious flaw hiding underneath. This breaks causality. In token choice, each token is independently routed to experts irrespective of the existence of other tokens. Here though it is different. Lets see a small example. 
+
+Assume each expert picks only 1 token. If expert 1 prefers token a over token b, then in presence of both the tokens, expert 1 will pick `a`. But if `a` is not present expert 1 will pick `b`. So essentially we're leaking information to `b` whether `a` is present in the sequence or not. Leaking because, `b` can be earlier in the sequence than `a`. This breaks causality. Perhaps potentially (among the many reasons) why llama 4 is not up to the mark.
+
+## Parallelism in MoE: Expert Parallelism
+
+So in a [previous blog](https://datta0.github.io/posts/understanding-multi-gpu-parallelism-paradigms/), we have talked about parallelism strategies and how they can be applied to Transformers, both attention and MLP. MoE is no exception to this. It offers us more flexibility in terms of parallelism strategies. 
+
+One thing we need to ensure when parallelising things is to minimise communication as much as possible. Because the time you spend communicating is the time you are not computing for the most part.
+
+One can place different experts (or different groups of experts) onto different GPUs to reduce the memory pressure on single GPU either to parallelise MoE for throughput gains or due to memory constriants on single GPU. This is called expert parallelism. The number of GPUs you split the experts across is called expert parallelism degree.
+
+When you do expert parallelism, you can either replicate the attention modules across the expert parallelism degree or you can split them and use [tensor parallelism](https://datta0.github.io/posts/understanding-multi-gpu-parallelism-paradigms/#tensor-parallelism) as discussed in the previous blog. It all boils down to your GPU capacity. If you choose to replicate the attention modules, you are pretty much doing [Data Parallel](https://datta0.github.io/posts/understanding-multi-gpu-parallelism-paradigms/#data-parallelism) across GPUs for the attention modules. Then you can distribute the tokens to the corresponding GPUs according to their choice of experts. Once the computation is done, you can gather your share of tokens from all the GPUs and then go ahead with your own stuff for the later computations.
+
+Note that because this happens for every layer, I wouldn't think it is a smart idea to parallelise this across nodes. This is great for parallelising within a node across the GPUs which are connected by high speed bandwidth like PCIe or NVLink.
+
+![Expert parallelism](assets/img/blogs/moe_journey/expert_parallelism.jpg)
+_Expert parallelism_

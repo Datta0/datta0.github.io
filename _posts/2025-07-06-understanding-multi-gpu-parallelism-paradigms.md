@@ -208,7 +208,7 @@ $$
 
 $$
 
-\text{final\_output} = concat_i[head_1, head_2, ..., head_n] @ W_o
+\text{final_output} = concat_i[head_1, head_2, ..., head_n] @ W_o
 
 $$
 
@@ -221,10 +221,13 @@ One in theory can split the heads arbitrarily across GPUs. But the most efficien
 [MLPs nowadays](https://github.com/huggingface/transformers/blob/main/src/transformers/models/llama/modeling_llama.py#L138-L151) have the following operations going on inside them. For an input X, we have
 
 $$
-up = X@W_{up} \quad gate = X@W_{gate} \\
-gate = \text{act\_fn}(gate) \quad \quad \text{typically swish or gelu} \\
-\text{up\_gate} = up * gate \quad \quad \text{element wise multiplication} \\
-output = \text{up\_gate} @ W_{down}
+\begin{aligned}
+up &= X W_{up} \\
+gate &= X W_{gate} \\
+gate &= \text{act\_fn}(gate) \quad \text{(typically swish or GELU)} \\
+\text{up\_gate} &= up * gate \quad \text{(element-wise multiplication)} \\
+output &= \text{up\_gate} W_{down}
+\end{aligned}
 $$
 
 Because `up * gate` is an element wise multiplication operation and so is the activation function, whatever splits you do for `up_proj` if you do the same thing for `gate_proj` we'd be good. We don't need to worry much. 
