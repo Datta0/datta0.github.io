@@ -23,17 +23,18 @@ MoE or mixture of experts is a natural continuation of the same. Today we'll try
 ## FFNN
 Let's start with the FFN. Attention is all cool but attention doesn't mix features with one another. It only brings you the information from the other tokens so get a context of what you're surrounded by thus giving you an idea of what you potentially are. But the model also needs to know which features of the token are important and which are potentially discardable given the context. This is pretty much the job of FFNN. Here we try to separate the features of interest from the non-interesting features. Given a token and its features, we project it from the model dimension to a higher dimension called the MLP dimension, or intermediate size, and apply a nonlinearity element-wise to achieve that.
 In the recent past, we have Gated Linear unit as the buiding block which goes as follows:
+
 $$
 \begin{aligned}
 X &\in \mathbb{R}^{n \times d} \\
 W_{up}, W_{gate} &\in \mathbb{R}^{d \times d_{mlp}} \\
 W_{down} &\in \mathbb{R}^{d_{mlp} \times d} \\
 \\
-g &= X @ W_{gate} \in \mathbb{R}^{n \times d_{mlp}} \\
-u &= X @ W_{up} \in \mathbb{R}^{n \times d_{mlp}} \\
+g &= X @ W_{gate} \quad \in \mathbb{R}^{n \times d_{mlp}} \\
+u &= X @ W_{up} \quad \in \mathbb{R}^{n \times d_{mlp}} \\
 s &= \text{SiLU}(g) \\
 gu &= s \odot u \\
-\text{MLP}(X) &= gu @ W_{down} \in \mathbb{R}^{n \times d}
+\text{MLP}(X) &= gu @ W_{down} \quad \in \mathbb{R}^{n \times d}
 \end{aligned}
 $$
 
@@ -51,126 +52,159 @@ Yeah we would like to solve exactly that problem. We would like to know which co
 
 
 The simplest way to do it is to have a linear projection(yeah [like](https://datta0.github.io/posts/transformer-imagined/#the-transformations) [always](https://datta0.github.io/posts/transformer-imagined/#the-transformations:~:text=The%20simplest%20way%20to%20do%20that%20is%20to%20have%20a%20linear%20transformation%20%28yeah%20again%20%3A%29%29%2E)) that predicts the importance of a column for the given input. 
-So for an input $X \in \R^{d}$ (single token), we need a matrix that takes `d` features and outputs us $d_mlp$ values. But that would be a $\R^{d \times d_{mlp}}$ matrix. So by doing this we're literally repeating the computation we'd have done for `gate_proj`. 
+So for an input $X \in \mathbb{R}^{d}$ (single token), we need a matrix that takes `d` features and outputs us $d_{mlp}$ values. But that would be a $\mathbb{R}^{d \times d_{mlp}}$ matrix. So by doing this we're literally repeating the computation we'd have done for `gate_proj`. 
 
 The input dimension cannot be compromised on. What can be changeed is the output dimension. What does it mean to the operations? Essentially we find a smaller dimension, say `n`, such that we predict `n` values per input and then use those values to pick `some` of the $d_{mlp}$ columns. But we should be careful as to not involve any more non simple, non trivial transformations on the said `n` that adds to the compute and parameter cost. When tasked with such constraints, always try to pick the simplest way out. So instead of having to take a decision for each of the columns, what if we take a single decision for a group of columns? This essentially is equivalent to saying, "Let us group $d_{mlp}$ columns into $k$ buckets, and for each bucket we decide whether to use it or not".  
 
 Lets see how (much) that reduces our compute. If we multiply a matrix of shape `(m,k)` with another matrix of shape `(k,n)` to get an output of shape `(m,n)`, we're doing `O(mnk)` computations. You can visualise this by taking the perspective of the ouptut.
-For each of the values in the output, we need to do a dot product between vectors of size `k`. So we do `k` multiplications and `k-1` additions (of `k` numbers). And we have `mn` such values. So the total computation is `O(mnk)`. If you consider addition and multiplication as 1 operation, we're looking at `~2mnk` ops. Please excuse the abuse of O notation here :).
+For each of the values in the output, we need to do a dot product between vectors of size `k`. So we do `k` multiplications and `k-1` additions (of `k` numbers). And we have `m*n` such values. So the total computation is `O(mnk)`. If you consider addition and multiplication as 1 operation, we're looking at `~2mnk` ops. Please excuse the abuse of O notation here :).
 
-So initially for single token, to perform full computation (MLP), we had
+So initially for **s tokens**, to perform full computation (MLP), we have:
+
 $$
 \begin{aligned}
-g      &= X @ W_{gate} &&\in \mathbb{R}^{n \times d_{mlp}} &&\quad | \quad \mathcal{O}(d \cdot d_{mlp}) \\
-u      &= X @ W_{up}   &&\in \mathbb{R}^{n \times d_{mlp}} &&\quad | \quad \mathcal{O}(d \cdot d_{mlp}) \\
-s      &= \text{SiLU}(g) &&                                  &&\quad | \quad \mathcal{O}(d \cdot d_{mlp}) \\
-gu     &= s \odot u    &&\in \mathbb{R}^{n \times d_{mlp}} &&\quad | \quad \mathcal{O}(d \cdot d_{mlp}) \\
-\text{out} &= gu @ W_{down} &&\in \mathbb{R}^{n \times d}  &&\quad | \quad \mathcal{O}(d \cdot d_{mlp}) \\
+g   &= X W_{\text{gate}} &&\in \mathbb{R}^{s \times d_{\text{mlp}}} &&\;\; \mathcal{O}(s\, d\, d_{\text{mlp}}) \\
+u   &= X W_{\text{up}}   &&\in \mathbb{R}^{s \times d_{\text{mlp}}} &&\;\; \mathcal{O}(s\, d\, d_{\text{mlp}}) \\
+s'  &= \mathrm{SiLU}(g)  &&                           &&\;\; \mathcal{O}(s\, d_{\text{mlp}}) \\
+gu  &= s' \odot u        &&\in \mathbb{R}^{s \times d_{\text{mlp}}} &&\;\; \mathcal{O}(s\, d_{\text{mlp}}) \\
+\text{out} &= gu W_{\text{down}} &&\in \mathbb{R}^{s \times d} &&\;\; \mathcal{O}(s\, d\, d_{\text{mlp}})
 \end{aligned}
 $$
 
 $$
-\text{total} = 5 \cdot \mathcal{O}(d \cdot d_{mlp})
+\text{total} \;\approx\; 3\,\mathcal{O}(s\, d\, d_{\text{mlp}}) \quad\text{(matmuls dominate)}
 $$
 
-In the latter case, we have weights of the following shapes,
-$$
-\begin{aligned}
-d_{e} &= \frac{d_{mlp}}{n} \\
-W'_{up}   &\in \mathbb{R}^{n \times d \times d_{e}} &&\quad | \quad n \text{ buckets each output } d_{e} \text{ features} \\
-W'_{gate} &\in \mathbb{R}^{n \times d \times d_{e}} &&\quad | \quad n \text{ buckets each output } d_{e} \text{ features} \\
-W'_{down} &\in \mathbb{R}^{n \times d_{e} \times d} &&\quad | \quad n \text{ buckets each output } d \text{ features} \\
-W'_{picker} &\in \mathbb{R}^{d \times n}            &&\quad | \quad \text{specifies the preference towards the } n \text{ buckets}
-\end{aligned}
-$$
-First we compute the preference scores, find the top $k$, and pick the corresponding $k$ buckets to perform the operations:
+---
+
+In the latter case, we have weights of the following shapes, with **n experts** each outputting \(d_e\) features:
 
 $$
 \begin{aligned}
-\text{Scores} &= X @ W_{picker} &&\in \mathbb{R}^{n} &&\quad | \quad \mathcal{O}(d \cdot n) \\
-\text{TopK} &= \text{top}_k(\text{Scores}) &&\in \mathbb{R}^{k} &&\quad | \quad \mathcal{O}(n \log k) \\
-\\
-g &= X @ W'_{gate}[\text{TopK}] &&\in \mathbb{R}^{n \times k \cdot d_e} &&\quad | \quad \mathcal{O}(d \cdot k \cdot d_e) \\
-u &= X @ W'_{up}[\text{TopK}]   &&\in \mathbb{R}^{n \times k \cdot d_e} &&\quad | \quad \mathcal{O}(d \cdot k \cdot d_e) \\
-s &= \text{SiLU}(g)             &&                                      &&\quad | \quad \mathcal{O}(d \cdot k \cdot d_e) \\
-gu &= s \odot u                 &&\in \mathbb{R}^{n \times k \cdot d_e} &&\quad | \quad \mathcal{O}(d \cdot k \cdot d_e) \\
-\text{out} &= gu @ W'_{down}[\text{TopK}] &&\in \mathbb{R}^{n \times d} &&\quad | \quad \mathcal{O}(d \cdot k \cdot d_e) \\
-\text{result} &= \sum_{i \in \text{TopK}} \text{out}_{i} \odot \text{scores}_{i} &&\in \mathbb{R}^{d} &&\quad | \quad \mathcal{O}(d \cdot k) \\
+d_e &= \frac{d_{\text{mlp}}}{n} \\
+W'_{\text{up}}   &\in \mathbb{R}^{n \times d \times d_e} \\
+W'_{\text{gate}} &\in \mathbb{R}^{n \times d \times d_e} \\
+W'_{\text{down}} &\in \mathbb{R}^{n \times d_e \times d} \\
+W'_{\text{picker}} &\in \mathbb{R}^{d \times n}
 \end{aligned}
 $$
 
-$$
-\text{total} = 5 \cdot \mathcal{O}(d \cdot k \cdot d_e) + \mathcal{O}(d \cdot n) + \mathcal{O}(n \log k)
-$$
+First we compute preference scores, find top-\(k\), and pick the corresponding \(k\) experts:
 
-comparing the two, we have 
 $$
 \begin{aligned}
-\text{Ops}_{\text{MLP}} &= 5 \cdot \mathcal{O}(d \cdot d_{mlp}) \\
-\text{Ops}_{\text{MoE}} &= 5 \cdot \mathcal{O}(d \cdot k \cdot d_e) + \mathcal{O}(d \cdot n) + \mathcal{O}(n \log k) \\
-&= 5 \cdot \mathcal{O}\left(d \cdot k \cdot \frac{d_{mlp}}{n}\right) + \mathcal{O}(d \cdot n) + \mathcal{O}(n \log k) \\
-&\approx \mathcal{O} \left( d \cdot \left( 5 \cdot d_{mlp} \cdot \frac{k}{n} + n \right) \right) \quad (\text{ignoring } n \log k)
+\text{scores} &= X W'_{\text{picker}}
+&&\in \mathbb{R}^{s \times n}
+&&\;\; \mathcal{O}(s\, d\, n) \\
+\text{TopK} &= \mathrm{top}_k(\text{scores})
+&&\in \mathbb{R}^{s \times k}
+&&\;\; \mathcal{O}(s\, n \log k) \\
+g &= X\, W'_{\text{gate}}[\text{TopK}]
+&&\in \mathbb{R}^{s \times (k d_e)}
+&&\;\; \mathcal{O}(s\, d\, k\, d_e) \\
+u &= X\, W'_{\text{up}}[\text{TopK}]
+&&\in \mathbb{R}^{s \times (k d_e)}
+&&\;\; \mathcal{O}(s\, d\, k\, d_e) \\
+s' &= \mathrm{SiLU}(g)
+&&
+&&\;\; \mathcal{O}(s\, k\, d_e) \\
+gu &= s' \odot u
+&&\in \mathbb{R}^{s \times (k d_e)}
+&&\;\; \mathcal{O}(s\, k\, d_e) \\
+\text{out} &= gu\, W'_{\text{down}}[\text{TopK}]
+&&\in \mathbb{R}^{s \times d}
+&&\;\; \mathcal{O}(s\, d\, k\, d_e) \\
+\text{result} &= \sum_{i \in \text{TopK}} \text{out}_i \,\odot\, \text{scores}_i
+&&\in \mathbb{R}^{s \times d}
+&&\;\; \mathcal{O}(s\, d\, k)
 \end{aligned}
 $$
 
+$$
+\text{total}
+= \mathcal{O}(s\, d\, k\, d_e) + \mathcal{O}(s\, d\, n) + \mathcal{O}(s\, n \log k)
+$$
 
-Of course a lot of it hinges on ratio between `k` and `n`. From a hardware and performance standpoint, it relies on the ability to parallelise the computation of those `k` buckets efficiently. For inference, this is trivial as we only need to worry about one token and its corresponding experts. But for training, we need to parallelise across tokens and experts. Things can get really tricky here. 
+Comparing the two:
 
-I'd leave it to you to compare these for a typical MoE config like [Qwen3-30B-A3B](https://huggingface.co/unsloth/Qwen3-30B-A3B-Thinking-2507/blob/main/config.json) or [GPT OSS 20B](https://huggingface.co/unsloth/gpt-oss-20b/blob/main/config.json) and verify for yourself that this makes sense mathematically.
-
-<details>
-<summary><b>For the lazy reader, here's the math (click to expand)</b></summary>
-<br>
-
-### 1. [Qwen3-30B-A3B](https://huggingface.co/unsloth/Qwen3-30B-A3B-Thinking-2507/blob/main/config.json)
-From the config:
-- $d = 2048$ (`hidden_size`)
-- $n = 128$ (`num_experts`)
-- $k = 8$ (`num_experts_per_tok`)
-- $d_{e} = 768$ (`moe_intermediate_size`)
-
-This means the equivalent naive MLP intermediate size $d_{mlp} = n \cdot d_e = 128 \cdot 768 = 98,304$. Let's plug these into our equations:
-
-- **Dense operations:** $5 \cdot d \cdot d_{mlp} = 5 \cdot 2048 \cdot 98304 \approx 1,006.6 \text{ M}$ operations ($\sim1 \text{ GOps}$ per token)
-- **MoE operations:** 
-  - Routing operations: $d \cdot n = 2048 \cdot 128 = 262,144$
-  - Expert operations: $5 \cdot d \cdot k \cdot d_e = 5 \cdot 2048 \cdot 8 \cdot 768 = 62,914,560$ 
-  - Total MoE ops $\approx 63.2 \text{ M}$ operations
-
-That is a **$\sim93.7\%$ reduction** in FFN FLOPs against the naive dense layer counterpart!
-
-### 2. [GPT OSS 20B](https://huggingface.co/unsloth/gpt-oss-20b/blob/main/config.json)
-From the config:
-- $d = 2880$ (`hidden_size`)
-- $n = 32$ (`num_local_experts`)
-- $k = 4$ (`num_experts_per_tok`)
-- $d_{e} = 2880$ (`intermediate_size` per expert)
-
-Here, the equivalent dense $d_{mlp} = n \cdot d_{e} = 32 \cdot 2880 = 92,160$.
-
-- **Dense operations:** $5 \cdot d \cdot d_{mlp} = 5 \cdot 2880 \cdot 92160 \approx 1,327 \text{ M}$ operations ($\sim1.33 \text{ GOps}$ per token)
-- **MoE operations:**
-  - Routing operations: $d \cdot n = 2880 \cdot 32 = 92,160$
-  - Expert operations: $5 \cdot d \cdot k \cdot d_{e} = 5 \cdot 2880 \cdot 4 \cdot 2880 = 165,888,000$
-  - Total MoE ops $\approx 166 \text{ M}$ operations
-
-This yields a **$\sim87.5\%$ compute reduction** in the FFN block while retaining a massive $92$K parameter width per token routing!
-
-</details>
-<br> 
+$$
+\begin{aligned}
+\mathrm{Ops}_{\text{MLP}}
+&= \mathcal{O}(s\, d\, d_{\text{mlp}}) \\
+\mathrm{Ops}_{\text{MoE}}
+&= \mathcal{O}(s\, d\, k\, d_e) + \mathcal{O}(s\, d\, n) + \mathcal{O}(s\, n \log k) \\
+&= \mathcal{O}\!\left(s\, d\, k\, \frac{d_{\text{mlp}}}{n}\right) + \mathcal{O}(s\, d\, n) + \mathcal{O}(s\, n \log k)
+\end{aligned}
+$$
 
 ![MoE](assets/img/blogs/moe_journey/moe.jpg)
 _MoE visualised_
+
+---
+
+Of course a lot hinges on the ratio between \(k\) and \(n\).
+From a hardware and performance standpoint, it relies on parallelising the chosen \(k\) experts efficiently.
+
+I'd leave it to you to compare these for typical MoE configs like
+[Qwen3-30B-A3B](https://huggingface.co/unsloth/Qwen3-30B-A3B-Thinking-2507/blob/main/config.json)
+or
+[GPT OSS 20B](https://huggingface.co/unsloth/gpt-oss-20b/blob/main/config.json)
+and verify for yourself that this makes sense mathematically.
+
+<details markdown="1" style="background-color: rgba(128, 128, 128, 0.1); padding: 15px; border-radius: 8px;">
+<summary markdown="span"><b>For the lazy reader, here's the math (click to expand)</b></summary>
+
+### 1. Qwen3-30B-A3B
+
+From the config:
+
+- $d = 2048$ (`hidden_size`)
+- $n = 128$ (`num_experts`)
+- $k = 8$ (`num_experts_per_tok`)
+- $d_e = 768$ (`moe_intermediate_size`)
+
+Equivalent dense intermediate size:  
+$d_{\text{mlp}} = n d_e = 128 \cdot 768 = 98{,}304$.
+
+- **Dense ops (dominant matmuls):**  
+  $3 \cdot s\, d\, d_{\text{mlp}} \approx 3 \cdot s \cdot 2048 \cdot 98{,}304$
+
+- **MoE ops:**
+  - Routing: $s\, d\, n = s \cdot 2048 \cdot 128$
+  - Experts: $3 \cdot s\, d\, k\, d_e = 3 \cdot s \cdot 2048 \cdot 8 \cdot 768$
+
+### 2. GPT OSS 20B
+
+From the config:
+
+- $d = 2880$ (`hidden_size`)
+- $n = 32$ (`num_local_experts`)
+- $k = 4$ (`num_experts_per_tok`)
+- $d_e = 2880$ (`intermediate_size` per expert)
+
+Equivalent dense intermediate size:  
+$d_{\text{mlp}} = n d_e = 32 \cdot 2880 = 92{,}160$.
+
+- **Dense ops (dominant matmuls):**  
+  $3 \cdot s\, d\, d_{\text{mlp}} \approx 3 \cdot s \cdot 2880 \cdot 92{,}160$
+
+- **MoE ops:**
+  - Routing: $s\, d\, n = s \cdot 2880 \cdot 32$
+  - Experts: $3 \cdot s\, d\, k\, d_e = 3 \cdot s \cdot 2880 \cdot 4 \cdot 2880$
+
+</details>
 
 ## Consolidation
 
 This is how the output is calculated for the MoE. `out[i]` is the output of the i'th expert. We multiply by the scores to respect the preference
 
 $$
-scores = X @ W_{router} \\
-out[i] = (\text{SiLU}(X \cdot W_{gate}[i]) * (X\cdot W_{up}[i])) \cdot W_{down}[i] \quad \in \mathbb{R}^{d} \quad \quad | \quad \mathcal{O}(d \cdot k) \\
-
-out = \sum_{i \in \text{TopK}} scores[i] \cdot out[i] \quad \in \mathbb{R}^{d} \quad \quad | \quad \mathcal{O}(d \cdot k) $$
+\begin{aligned}
+\text{scores} &= X @ W_{router} \\
+\text{out}[i] &= (\text{SiLU}(X \cdot W_{gate}[i]) * (X\cdot W_{up}[i])) \cdot W_{down}[i] \quad \in \mathbb{R}^{d} \quad | \quad \mathcal{O}(d \cdot k) \\
+\text{out} &= \sum_{i \in \text{TopK}} \text{scores}[i] \cdot \text{out}[i] \quad \in \mathbb{R}^{d} \quad | \quad \mathcal{O}(d \cdot k) 
+\end{aligned}
+$$
 
 
 ## Training
@@ -193,11 +227,12 @@ But there's a small problem with adding such a bias. Natural language potentiall
 Deepseek V3 again famously implemented this to counteract the imbalance. Instead of adding an auxiliary loss, we modify the router scores so that we reduce the scores of the routers that are heavily being picked historically while increasing the ones that are not picked much. 
 
 $$
-\text{scores} = \text{scores} + \text{bias} \\
-e_i = \text{number of tokens expert i sees} = \sum_{j=1}^{s} \mathbb{I}(i \in \text{TopK}(j)) \\
-\bar{e} = \text{expected number of tokens per expert} = \frac{s}{n} \\
-\text
-b_i = b_{i-1} + \lambda \cdot \text{sign}(e_i - \bar{e}) \\
+\begin{aligned}
+\text{scores} &= \text{scores} + \text{bias} \\
+e_i &= \text{number of tokens expert i sees} = \sum_{j=1}^{s} \mathbb{I}(i \in \text{TopK}(j)) \\
+\bar{e} &= \text{expected number of tokens per expert} = \frac{s}{n} \\
+b_i &= b_{i-1} + \lambda \cdot \text{sign}(e_i - \bar{e}) \\
+\end{aligned}
 $$
 
 ### Expert choice
@@ -212,12 +247,14 @@ Assume each expert picks only 1 token. If expert 1 prefers token a over token b,
 Some models use a shared expert which is used by all the tokens. This is done to make sure that common knowledge is shared across all the tokens and there is no contention to choose between a common knowledge expert and a specialized expert.
 
 $$
-
-scores = X @ W_{router} \quad gate_i = SiLU(X \cdot W_{gate}[i]) \quad up_i = X \cdot W_{up}[i] \\
-gate_{shared} = SiLU(X \cdot W_{gate_{shared}}) \quad up_{shared} = X \cdot W_{up_{shared}} \\
-out[i] = (gate_i * up_i) \cdot W_{down}[i] \\
-out_{shared} = (gate_{shared} * up_{shared}) \cdot W_{down_{shared}} \\
-out = out_{shared} + \sum_{i \in \text{TopK}} scores[i] \cdot out[i]
+\begin{aligned}
+scores &= X @ W_{router} \\
+gate_i &= SiLU(X \cdot W_{gate}[i]) \quad up_i = X \cdot W_{up}[i] \\
+gate_{shared} &= SiLU(X \cdot W_{gate_{shared}}) \quad up_{shared} = X \cdot W_{up_{shared}} \\
+out[i] &= (gate_i * up_i) \cdot W_{down}[i] \\
+out_{shared} &= (gate_{shared} * up_{shared}) \cdot W_{down_{shared}} \\
+out &= out_{shared} + \sum_{i \in \text{TopK}} scores[i] \cdot out[i]
+\end{aligned}
 $$
 
 
@@ -248,7 +285,7 @@ In traditional terminology, because you are hitting/activating only `k` out of t
 When you see a model name like [unsloth/Qwen3-30B-A3B-Instruct-2507](https://huggingface.co/unsloth/Qwen3-30B-A3B-Thinking-2507/blob/main/config.json), the total number of parameters, 30B, is followed by the number of activated parameters, A3B. So only 3B parameters are activated per token. Pretty cool huh!
 
 ## Some more details
-We still have to take a lot of decisions here. What is the optimal `k` and `n`? Typically in the earlier works a ratio of 1:8 was used for `k:n`. But recent works have shown that we can do better. For a fixed number of total parameters and activated paramters, the sparser you choose the better aka lower `k` and higher `n`. This is why you see [128](https://huggingface.co/unsloth/Qwen3-30B-A3B-Thinking-2507/blob/main/config.json#L21) 256 and even [512](https://huggingface.co/unsloth/Qwen3.5-397B-A17B/blob/main/config.json#L95) experts in recent times.
+We still have to take a lot of decisions here. What is the optimal `k` and `n`? Typically in the earlier works a ratio of 1:8 was used for `k:n`. But recent works have shown that we can do better. For a fixed number of total parameters and activated paramters, the sparser you choose the better aka lower `k` and higher `n`. This is why you see [128](https://huggingface.co/unsloth/Qwen3-30B-A3B-Thinking-2507/blob/main/config.json#L21), 256 and even [512](https://huggingface.co/unsloth/Qwen3.5-397B-A17B/blob/main/config.json#L95) experts in recent times.
 
 We just briefly touched upon load balancing but it is a deep topic in itself. Sometimes, when an expert is overwhelmed with tokens, some tokens are dropped to avoid going over the capacity and potentially causing OOMs or just general slowdown. 
 
