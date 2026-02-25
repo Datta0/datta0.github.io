@@ -255,7 +255,7 @@ out &= out_{shared} + \sum_{i \in \text{TopK}} scores[i] \cdot out[i]
 \end{aligned}
 $$
 
-
+Do note that for some models there are more than one shared expert. The resulting equation looks exactly like that of the "routed" experts but every token goes through all of the said "shared" experts. You get the idea.
 
 ## Parallelism in MoE: Expert Parallelism
 
