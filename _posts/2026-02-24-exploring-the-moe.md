@@ -79,17 +79,16 @@ $$
 
 In the latter case, we have weights of the following shapes, with **n experts** each outputting \(d_e\) features:
 
+
 $$
-\begin{aligned}
-d_e &= \frac{d_{\text{mlp}}}{n} \\
-W'_{\text{up}}   &\in \mathbb{R}^{n \times d \times d_e} \\
-W'_{\text{gate}} &\in \mathbb{R}^{n \times d \times d_e} \\
-W'_{\text{down}} &\in \mathbb{R}^{n \times d_e \times d} \\
-W'_{\text{picker}} &\in \mathbb{R}^{d \times n}
-\end{aligned}
+d_e = \frac{d_{\text{mlp}}}{n} \quad \text{and} \quad
+W'_{\text{up}}   \in \mathbb{R}^{n \times d \times d_e} \quad
+W'_{\text{gate}} \in \mathbb{R}^{n \times d \times d_e} \quad
+W'_{\text{down}} \in \mathbb{R}^{n \times d_e \times d} \quad
+W'_{\text{picker}} \in \mathbb{R}^{d \times n} \quad
 $$
 
-First we compute preference scores, find top-\(k\), and pick the corresponding \(k\) experts:
+First we compute preference scores, find `top-k`, and pick the corresponding `k` experts with the flop count:
 
 $$
 \begin{aligned}
@@ -121,7 +120,7 @@ gu &= s' \odot u
 $$
 
 $$
-\text{total}
+\text{total ops}
 = \mathcal{O}(s\, d\, k\, d_e) + \mathcal{O}(s\, d\, n) + \mathcal{O}(s\, n \log k)
 $$
 
@@ -194,7 +193,7 @@ This yields a **$\sim87.5\%$ compute reduction** in the FFN block while retainin
 
 ## Consolidation
 
-This is how the output is calculated for the MoE. `out[i]` is the output of the i'th expert. We multiply by the scores to respect the preference
+This is how the output is calculated for the MoE. `out[i]` is the output of the `i`th expert. We multiply by the scores to respect the preferences of the tokens.
 
 $$
 \begin{aligned}
@@ -269,10 +268,12 @@ When you do expert parallelism, you can either replicate the attention modules a
 
 Now that you know expert parallelism exists, do you see why the token distribution being uniform is crucial even from a performance standpoint? Uniform distribution ensures all the experts compute their share together parallelly and there's not time wasted waiting for an expert's computation. It all fits well.
 
-Note that because this happens for every layer, I wouldn't think it is a smart idea to parallelise this across nodes. This is great for parallelising within a node across the GPUs which are connected by high speed bandwidth like PCIe or NVLink.
+Note that because this happens for every layer, I wouldn't think it is a smart idea to parallelise this across nodes. This is great for parallelising within a node across the GPUs which are connected by high speed bandwidth like PCIe or NVLink. 
+
+Below is an image showing how expert parallelism works. Note that tokens are color coded to corresponding GPUs. Also there is definite imbalance in the load that each GPU is bearing. 
 
 ![Expert parallelism](assets/img/blogs/moe_journey/expert_parallel.jpg)
-_Expert parallelism_
+_Expert parallelism (note that tokens are color coded to corresponding GPUs)_
 
 
 ## So why go through all this hassle?
@@ -282,7 +283,23 @@ In traditional terminology, because you are hitting/activating only `k` out of t
 
 When you see a model name like [unsloth/Qwen3-30B-A3B-Instruct-2507](https://huggingface.co/unsloth/Qwen3-30B-A3B-Thinking-2507/blob/main/config.json), the total number of parameters, 30B, is followed by the number of activated parameters, A3B. So only 3B parameters are activated per token. Pretty cool huh!
 
+
+
 ## Some more details
+
+### Quick math
+So let's do a quick math. If a model is said to have k experts, n activated and is total of T parameters while A are activated, $n_l$ is total number of layers, where `#X` denotes number of parameters in module X, we have:
+
+$$
+\begin{aligned}
+\#lm\_head + \#attention \cdot n_l + \#moe \cdot n_l &+ \#router \cdot n_l + \#embedding = T \\
+\#lm\_head + \#attention \cdot n_l + \#moe \cdot \frac{n}{k} \cdot n_l &+ \#router \cdot n_l + \#embedding = A \\
+\implies \left(1-\frac{n}{k}\right)\#moe \cdot n_l &= T - A \\
+\implies \#moe &= \frac{T-A}{\left(1-\frac{n}{k}\right)\cdot n_l}
+\end{aligned}
+$$
+
+
 We still have to take a lot of decisions here. What is the optimal `k` and `n`? Typically in the earlier works a ratio of 1:8 was used for `k:n`. But recent works have shown that we can do better. For a fixed number of total parameters and activated paramters, the sparser you choose the better aka lower `k` and higher `n`. This is why you see [128](https://huggingface.co/unsloth/Qwen3-30B-A3B-Thinking-2507/blob/main/config.json#L21), 256 and even [512](https://huggingface.co/unsloth/Qwen3.5-397B-A17B/blob/main/config.json#L95) experts in recent times.
 
 We just briefly touched upon load balancing but it is a deep topic in itself. Sometimes, when an expert is overwhelmed with tokens, some tokens are dropped to avoid going over the capacity and potentially causing OOMs or just general slowdown. 
@@ -291,5 +308,5 @@ Sometimes (albeit not a lot), instead of training MoE from scratch, what people 
 
 One mroe thing to note is that not all layers need to be MoE. There are some models that mix and match both like the [GLM-4.7-Flash](https://github.com/huggingface/transformers/blob/0ff46c9015474ec2da5e364273bd393d8b5176e0/src/transformers/models/glm4_moe/modeling_glm4_moe.py#L435-L438).
 
-## Conclusion
+## Outro
 With this I leave you with a good motivation to appreciate MoE and what they bring to the table. Also a little understanding of the challenges of training and serving them and how to tackle those. We will go into more details in future blogs. Thanks for reading thus far. If you have any comments, concerns, questions, or suggestions, please feel free to reach out to me. You can find me on [LinkedIn](https://www.linkedin.com/in/datta0/) or [Twitter](https://twitter.com/im_datta0). I'll leave it here for now. Sayonara :)
