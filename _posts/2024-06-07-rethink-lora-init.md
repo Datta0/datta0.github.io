@@ -114,7 +114,7 @@ Note: truncated for better readability
 
 
 ## Reversing Initialization
-As you see, for a given layer (0-31), LoRA A and B would have same parameters in q_proj (query matrix), k_proj (key matrix), and o_proj. LoRA A has more parameters in v_proj(value matrix). LoRA B has more paramters in gate_proj and up_proj. Generally MLPs in Transformer have bigger hidden dimension than any other layers. So without loss of generality, B matrix has more paramters than A. So if nothing else, it ameks sense to initialise B with `kaiming uniform` and A with `zeros`. This is one of the things I tried. 
+As you see, for a given layer (0-31), LoRA A and B would have same parameters in q_proj (query matrix), k_proj (key matrix), and o_proj. LoRA A has more parameters in v_proj(value matrix). LoRA B has more paramters in gate_proj and up_proj. Generally MLPs in Transformer have bigger hidden dimension than any other layers. So without loss of generality, B matrix has more paramters than A. So if nothing else, it makes sense to initialise B with `kaiming uniform` and A with `zeros`. This is one of the things I tried. 
 
 ## Orthogonal initialisation
 Two vectors are called orthogonal when their dot product is zero. So in our use case, we need a lot of such orthogonal vectors. Those should be orthogonal in 8-D space (or whatever the lora rank is). And we need `m` such vectors in `A` and `n` such vectors in `B`. If we say have a few orthogonal vectors, any linear combinations of those would be orthogonal too. 
@@ -210,7 +210,7 @@ If you observe, reverse initialisation definitely outperforms the normal initial
 So for no loss, we're improving the convergence of LoRA. I know it takes a little time to initialise all the matrices given that we're doing QR decomposition for each of the layers. But this is a one time thing in the whole training cycle. It definitely makes sense to consider this as a starting point for initalisations.
 
 ## Analysis and Bonus content
-One other interesting thing I observed while training is the gradients. Thanks to wandb, I was able to track the gradeints. What I observed is, irrespective of initialisation, gradients for LoRA B are always greater than those of LoRA A. This is something we might need to look into later...
+One other interesting thing I observed while training is the gradients. Thanks to wandb, I was able to track the gradients. What I observed is, irrespective of initialisation, gradients for LoRA B are always greater than those of LoRA A. This is something we might need to look into later...
 
 
 ![Gradients for Normal initialisation](/assets/img/blogs/know_lora/lora_grad_normal.jpg)
@@ -223,7 +223,7 @@ _Gradients for Reverse initialisation_
 _Gradients for Orthogonal initialisation_
 
 What does this all tell us? If you ask me, there are some things that we can infer or take away from this
-1. The gradeints hint us towards having separate learning rates for A and B matrices. 
+1. The gradients hint us towards having separate learning rates for A and B matrices. 
 2. Different initalisations for LoRA should be further experimented upon. There are improvements we can harness.
 3. We probably need more ablation studies for newer techniques. Someday maybe even scaling laws for LoRA (or PEFT in general).
 
