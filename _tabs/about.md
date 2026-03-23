@@ -8,10 +8,11 @@ order: 4
 
 <img src="{{ '/assets/img/me.jpg' | relative_url }}" alt="Datta Nimmaturi" style="width: 360px; float: right">
 
-- 🎓 I hold Bachelor's degree in Mathematics and Computer Science
+- 🎓 I hold Bachelor's degree in [Mathematics and Computer Science](https://math.iith.ac.in/btech.php) from IIT Hyderabad
 - 💻 Currently working at [Unsloth](https://unsloth.ai).
 - 🤖 Have a huge interest in Maths, Deep Learning and Deep Reinforcement Learning
 - ❤️ Also Love Chess, Cricket and Tinkering with Operating Systems
+- Reach out to me via: [Discord](https://discord.com/users/723206433608433714), [Twitter](https://twitter.com/im_datta0), [Email](mailto:venkatadattasainimmaturi@gmail.com)
 - 📝 I also write another blog on substack summarising ML Research papers. [Check it out](https://datta0.substack.com) and here's a preview...
 
 
