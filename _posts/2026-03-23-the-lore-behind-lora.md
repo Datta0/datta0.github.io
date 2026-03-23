@@ -46,9 +46,11 @@ Well you see, if we keep the model the same, the model parameter and activations
 Mathematically speaking, memory usage can be written as: 
 
 $$
-\text{Memory} = \text{Model Params} + \text{Activations} + \text{Gradients} + \text{Optimizer States} \\
- \sim 2N_{total} + j \times N_{trainable} + k \times 2N_{trainable} \\
- \text{where } j \text{ and } k \text{ are constants for dtype and number of states}
+\begin{align*}
+\text{Memory} &= \text{Model Params} + \text{Activations} + \text{Gradients} + \text{Optimizer States} \\
+ &\sim 2N_{total} + j \times N_{trainable} + k \times 2N_{trainable} \\
+ \text{where } j \text{ and } k & \text{ are constants for dtype and number of states}
+\end{align*}
 $$
 
 There are many ways you can go about doing this. Typically what people used to do in the days of CNN for image recognition was to use ResNet and freeze (not train) almost all of the initial layers and just update the last layer. So a model that has already learnt to recognise edges, corners, shapes etc. can be used as a base and we just need to update the last layer to recognise our specific task for example, from classifying between 100 classes to classifying between cats 🐈 and dogs 🐕.
