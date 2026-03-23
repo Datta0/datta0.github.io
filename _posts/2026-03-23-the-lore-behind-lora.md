@@ -9,11 +9,10 @@ render_with_liquid: false
 draft: true
 math: true
 image:
-  path: /assets/img/blogs/lora_lora/lora_header.jpg
+  path: /assets/img/blogs/lora_lore/lora_header.jpg
   alt: LoRA imagined from the ground up
+  no_bg: true
 ---
-
-# LoRA
 
 ## Introduction
 
@@ -208,6 +207,11 @@ When you compare it to a simple linear layer, you are essentially adding more co
 LoRA is orthogonal to how you modify the base layer weights. So quantizing the base weights and adding LoRA on top of them has become a common theme when it comes to supervised fine tuning. This is typically referred to as QLoRA when you quantize the weights to 4bit. So the gradients and optimizer states still stay in relatively high precision while the base computation happens in lower precision, thus saving quite a lot of memory. 
 
 When doing reinforcement learning with LLMs people traditionally operate within the trust region to avoid the model drifting off too far from the original baseline. LoRA, in a way, acts as a good regularizer to make sure that the drift is not too much. [Thinking Machines Lab](https://thinkingmachines.ai/blog/lora/) has performed extensive experiments with LoRA for reinforcement learning and found out that it can be as good as training the entire model. Similar observations have been made for supervised fine-tuning as well. 
+
+
+![LoRA thinky](assets/img/blogs/lora_lore/lora_thinky.jpg)
+_LoRA thinky_
+
 
 ### What more does that give us
 
