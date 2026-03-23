@@ -200,6 +200,8 @@ Since in practice $r \ll m,n$, this memory condition is usually much easier to s
 
 In reality there are other factors that dictate the time taken but this is just a theoritical analysis. Most GPU operations are memory bound. So the less memory you need to transfer, the faster your operations go.
 
+We have done the same analysis has been done and the said changes have been implemented for [MoE in Unsloth](https://unsloth.ai/docs/new/faster-moe).
+
 When you compare it to a simple linear layer, you are essentially adding more compute on top of the linear layer. Given that we reduce the memory usage for training by a lot and also the fact that gradients update and optimizer state update need not be done for all the parameters, we essentially end up saving some compute as well compared to the full fine-tuning. 
 
 ### LoRA in practice
@@ -222,7 +224,7 @@ Well GPU memory savings is something we already established. That is why we form
 - You can customise which layers, which modules you want to apply lora to. In theory you can pick say every 4th layer and apply lora to only `k_proj` there and that would work too, albeit not as good as adding it on everything
 
 ### Final thoughts
-This is just an introductory write-up on LoRA and how to go about thinking about LoRA. You can come up with many modifications, like orthogonal initialization or splitting decomposition in terms of magnitude and direction, like Dora does. The space for exploration is quite vast and also the compute requirement for doing the same is quite low so which is quite appealing. I'd strongly recommend you to try to think of alternatives that one can come up with and see how they perform. 
+This is just an introductory write-up on LoRA and how to go about thinking about LoRA. You can come up with many modifications, like orthogonal initialization or splitting decomposition in terms of magnitude and direction, like Dora does. The space for exploration is quite vast and also the compute requirement for doing the same is quite low so which is quite appealing. I'd strongly recommend you to try to think of alternatives that one can come up with and see how they perform. At the very least, read my previous blog on trying out different initialization schemes for LoRA [here](https://datta0.github.io/posts/rethink-lora-init/).
 
 ### References
 1. [LoRA](https://arxiv.org/abs/2106.09685), [DoRA](https://arxiv.org/abs/2402.09353), [QLoRA](https://arxiv.org/abs/2305.14314)
