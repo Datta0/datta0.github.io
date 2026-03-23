@@ -1,6 +1,6 @@
 ---
 title: The lore behind LoRA
-description: An intuitive build up to LoRA
+description: LoRA imagined from the ground up
 author: datta0
 date: 2026-03-23T14:30:00+05:30
 categories: [LoRA, Transformer, Training, Finetuning, Math]
