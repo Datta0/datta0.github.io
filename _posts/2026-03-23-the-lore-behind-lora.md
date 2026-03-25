@@ -18,9 +18,6 @@ image:
 
 Previously we have talked about [Transformer and attention being re-imagined](https://datta0.github.io/posts/transformer-imagined/) from the first principles. We've motivated the need for attention, MLP, MoE and how they work in theory. But so far we've only talked about how these work in theory. But for the said components to work in ideal way, we need to train the model. Today we try to understand how to *efficiently* (we will explain this in a while) do that.
 
-## A brief about standard training
-
-So when training LLMs, assuming that we have data of `seq_len` tokens, each data sample gives us `seq_len-1` training examples all in one, namely, the subsequence of tokens starting from position `0` to `i` for all `i` from `0` to `seq_len-2` as the input and the token at position `i+1` as the target. All this is done in a single pass through the language model. Once a token is predicted, we calculate the Cross Entropy Loss and backpropagate the gradients through the entire model. I'm intentionally cutting the explanation short here about the training process and the reason behind all these. If you are interested, I might write another going into few more details about standard LLM training. But for now, lets move on to the main topic.
 
 ## Everything that touches the GPU
 
