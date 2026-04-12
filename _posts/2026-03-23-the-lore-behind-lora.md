@@ -18,19 +18,22 @@ image:
 
 Previously we have talked about [Transformer and attention being re-imagined](https://datta0.github.io/posts/transformer-imagined/) from the first principles. We've motivated the need for attention, MLP, MoE and how they work in theory. But so far we've only talked about how these work in theory. But for the said components to work in ideal way, we need to train the model. Today we try to understand how to *efficiently* (we will explain this in a while) do that.
 
+## A brief about standard training
 
-## Everything that touches the GPU
+So when training LLMs, assuming that we have data of `seq_len` tokens, each data sample gives us `seq_len-1` training examples all in one, namely, the subsequence of tokens starting from position `0` to `i` for all `i` from `0` to `seq_len-2` as the input and the token at position `i+1` as the target. All this is done in a single pass through the language model. Once a token is predicted, we calculate the Cross Entropy Loss and backpropagate the gradients through the entire model. I'm intentionally cutting the explanation short here about the training process and the reason behind all these. If you are interested, I might write another going into few more details about standard LLM training. But for now, lets move on to the main topic.
+
+### Everything that touches the GPU
 
 When training LLMs, one of the biggest constraints we have is GPU memory. People come up with clever ways like [parallelisms](https://datta0.github.io/posts/understanding-multi-gpu-parallelism-paradigms/) to circumvent this problem but it exists nonetheless. Let us see what all components are involved when training models. 
 
 - **Model weights/Parameters**: We store the weights in memory to perform forward and backward passes. For simplicity assume that each parameter is a BF16/FP16 number which takes up 2 bytes of memory. For a model with `N` parameters, we need `2N` bytes of memory.
 - **Activations**: When doing computations, there are intermediate results that sit on our GPU. For example, the output of layer 1 in a multi layer transformer is an activation. So is the output of the last layer. The size of this depends primarily on the input size and model configuration. Larger the input, larger the activations.
 - **Gradients**: This is how we *train/improve* the model. We calculate gradients of the loss wrt each of the parameter and use them to update the parameters. This is what contributes to *gradient* descent. Each *trainable* parameter contributes to one gradient.
-- **Optimizer states**: Once you calculate the said gradients, you need to have a mechanism to update the parameters using the said gradients. Sometimes you wanna normalise the gradients, sometimes you want to keep a moving average of the gradients. This is where optimizer and optimizer states come in. Optimizer dictates the math while optimizer states are the values you use to perform the math. For simple SGD, we have $w_{t} = w_{t-1} - lr * g_{t}$ where $g_{t}$ is the gradient at time $t$ and $lr$ is the learning rate. For Adam, we have momentum and variance along with the gradients. So each *trainable parameter* needs a *few* optimizer states.
+- **Optimizer states**: Once you calculate the said gradients, you need to have a mechanism to update the parameters using the said gradients. Sometimes you wanna normalise the gradients, sometimes you want to keep a moving average of the gradients. This is where optimizer and optimizer states come in. optimizer dictates the math while optimizer states are the values you use to perform the math. For simple SGD, we have $w_{t} = w_{t-1} - lr * g_{t}$ where $g_{t}$ is the gradient at time $t$ and $lr$ is the learning rate. For Adam, we have $m_{t} = beta_1 * m_{t-1} + (1 - beta_1) * g_{t}$ and $v_{t} = beta_2 * v_{t-1} + (1 - beta_2) * g_{t}^2$ where $m_{t}$ and $v_{t}$ are the moving averages of the gradients and their squares respectively. Then we have $w_{t} = w_{t-1} - lr * m_{t} / (sqrt(v_{t}) + epsilon)$ where $epsilon$ is a small constant to prevent division by zero. So each *trainable parameter* needs a *few* optimizer states.
 
 ### So what?
 
-Well you see where we're going with this. For typical AdamW optimizer based training, for an `N` parameter model, we'd end up needing at least `2N * 4` (2N for 16bit per param and 3 for , gradients and  momentum, variance aka optimizer states) bytes of memory just for the parameters, gradients and optimizer states. Note that typically you store these things in higher precision but we're just assuming a simplistic scenario here for convenience. 
+Well you see where we're going with this. For typical AdamW optimizer based training, for an `N` parameter model, we'd end up needing at least `2N * 4` bytes of memory just for the parameters, gradients and optimizer states. Note that typically you store these things in higher precision but we're just assuming a simplistic scenario here for convenience. 
 
 For a 7B parameter model, you're looking at 14GB of weights, 14GB gradients and 28GB of optimizer states. That's 56GB of memory just for the parameters, gradients and optimizer states! Note that we assumed BF16 everything, in practice people use FP32 and that blows it up even more.
 
@@ -43,11 +46,9 @@ Well you see, if we keep the model the same, the model parameter and activations
 Mathematically speaking, memory usage can be written as: 
 
 $$
-\begin{align*}
-\text{Memory} &= \text{Model Params} + \text{Activations} + \text{Gradients} + \text{Optimizer States} \\
- &\sim 2N_{total} + j \times N_{trainable} + k \times 2N_{trainable} + \text{Activations (small in comparison)} \\
- \text{where } j \text{ and } k & \text{ are constants for dtype and number of states}
-\end{align*}
+\text{Memory} = \text{Model Params} + \text{Activations} + \text{Gradients} + \text{Optimizer States} \\
+ \sim 2N_{total} + j \times N_{trainable} + k \times 2N_{trainable} \\
+ \text{where } j \text{ and } k \text{ are constants for dtype and number of states}
 $$
 
 There are many ways you can go about doing this. Typically what people used to do in the days of CNN for image recognition was to use ResNet and freeze (not train) almost all of the initial layers and just update the last layer. So a model that has already learnt to recognise edges, corners, shapes etc. can be used as a base and we just need to update the last layer to recognise our specific task for example, from classifying between 100 classes to classifying between cats 🐈 and dogs 🐕.
@@ -56,9 +57,7 @@ The same can be applied to LLMs. We can freeze majority of the model while train
 
 So ideally, we need to figure out a way to update every layer. But in transformer layer themselves, there are multiple components like query, key, value, output projection, MLP etc. How do we know which components to update and which to freeze? Well, what is the underlying architecture for all the said components? Yeah, everything is a linear layer. So if we can find a way to train a linear layer in a parameter efficient way, we can apply it to all the components, all layers and almost* all models.
 
-* Vision Language Models (VLM) and recent Mamba models use Convolution as an operation. Similar idea can be extended to those said operations as well. But we do not dive into those here.
-
-## Linear Layers everywhere
+### Linear Layers everywhere
 
 So one of the most basic and most prevalant computations through out the transformers is the linear layer which does `out = X@W` where `X` is the input, $W \in \mathbb{R}^{m \times n}$ is the weight matrix. Upon updating, we'd have `out = X@(W + delta_W)` where `delta_W` is the change in the weight matrix. If we can somehow find a way to represent `delta_W` using fewer parameters, we can achieve parameter efficient training. But we are also constrained by the fact that the shape of `delta_W` must match the shape of `W` which is `(m,n)`.
 
@@ -66,23 +65,18 @@ So one of the most basic and most prevalant computations through out the transfo
 ![Linear layers](assets/img/blogs/lora_lore/transformer_all_linear.jpg)
 _All linear layers in a transformer_
 
-What is the simplest way to create a matrix of shape (m,n) from the least number of elements possible? We can have a single element repeat across the entire matrix but unfortunately that is not optimal in the sense that we need variety in the weight values to capture different patterns. The next best thing is to repeat a single row which again suffers from the same problem as before. 
 
-The next best thing one can do is to take A of `m` elements and multiply each of those with each of another set of B of `n` elements and form the matrix like M[i,j] = A[i] * B[j]. This gives us the matrix while also preserving some variety in the weight values. Can we do better though? What we are essentially doing here is multiplying (m,1) vector/matrix(in the loose sense) with another vector of shape (1,n) resulting in a (m,n) shaped matrix. Pretty much exactly what we want.
-
-So we went from one number (single value) to repeating rows (n values) to using 2 vectors to fill (m+n) values for creating the said $\delta W$.
-
-One good property of matrices we can exploit is that if you multiply two matrices, the inner reduction dimension vanishes. So if you multiply matrices of shapes `(m,r)` with `(r,n)`, the `r` goes off and you'll be left with a matrix of shape `(m,n)`. While doing so, if the resultant decomposition can have lesser number of parameters than the original/output matrix. Let us mathematically see when that happens.
+One good property of matrices we can exploit is that if you multiply two matrices, the inner reduction dimension vanishes. So if you multiply matrices of shapes (m,r) with (r,n), the `r` goes off and you'll be left with a matrix of shape (m,n). While doing so, if the resultant decomposition can have lesser number of parameters than the original/output matrix. Let us mathematically see when that happens.
 
 We ideally need `m*r + r*n` << `m*n` for this to make sense. So `r << m*n/(m+n)`. At that scales assuming m~n, we'd need `r << n/2`. If you look at the example of [Qwen 3 0.6B](https://huggingface.co/Qwen/Qwen3-0.6B/blob/main/config.json#L11), the hidden size is 1024 and intermediate size is 3072. So our m, n are at least 1024 here. But this only gave us an upper bound on the inner size of the decomposed matrices.
 
-If you are familiar with the concept of a rank, then you'd know that `rank(AB) <= min(rank(A), rank(B))`. And also $rank(X \in \mathbb{R^{x,y}}) \leq \min(x,y)$. So for the $W_{delta}$ we talked about, we have $rank(W_{delta}) \leq \min(rank(A), rank(B)) \leq \min(\min(m,r), \min(r, n)) = r $. So we are imposing a **Low Rank** structure on the weight update matrix. If you want the model to learn complex patterns, this kind of puts a restriction on the capability of the model. So we do not want `r` to be too low that it hinders learning. Typically you see it taking values like `8, 16, 32` for simpler tasks and sometimes higher for complex tasks (which is very rarely the case).
+If you are familiar with the concept of a rank, then you'd know that rank(AB) <= min(rank(A), rank(B)). And also $rank(X \in \mathbb{R^{x,y}}) \leq \min(x,y)$. So for the $W_{delta}$ we talked about, we have $rank(W_{delta}) \leq \min(rank(A), rank(B)) \leq \min(\min(m,r), \min(r, n)) = r $. So we are imposing a **Low Rank** structure on the weight update matrix. If you want the model to learn complex patterns, this kind of puts a restriction on the capability of the model. So we do not want `r` to be too low that it hinders learning. Typically you see it taking values like `8, 16, 32` for simpler tasks and sometimes higher for complex tasks (which is very rarely the case).
 
 At typical scales as we discussed, `r = 16` and `m,n~1024`, we added $A \in \mathbb{R}^{m \times r}$ and $B \in \mathbb{R}^{r \times n}$ parameters for every $W \in \mathbb{R}^{m \times n}$ matrix. So we added $16 * (1024 + 1024) = 32768$ parameters for every $1024 \times 1024$ matrix, which is just 3% of the original parameters. For bigger models or for lower ranks this is even lower. This is why we call it efficient. We only need to track the gradients and optimizer states for these `3%` parameters. These are the main characters of the story. Rest all are just helpers :)
 
 So for training a 7B model, we'd still need the 14GB of weights. We also added say 3% aka 200M parameters for the adapters. This amounts to 200MB of more space for parameters. But we only need the gradients and optimizer states for the said 200M parmaeters which comes out to around 600M parameters or 1.2GB memory. Overall, if the activations are small enough (with gradient checkpointing), we're looking at around 15-16GB of memory for training a 7B model with LoRA adapters! This is huge savings compared to the 56GB we were looking at previously. This is what made finetuning accessible to the GPU poor like us.
 
-## Formalising
+### Formalising
 
 For every linear layer with weight $W \in \mathbb{R}^{m \times n}$, we decompose it as $W = W_0 + \Delta W$ where $W_0$ is the original weight and $\Delta W$ is the update. We can write $\Delta W = \alpha \cdot A \times B$ where $A \in \mathbb{R}^{m \times r}$ and $B \in \mathbb{R}^{r \times n}$ and $\alpha$ is a fixed scalar. We set A and B as trainable and keep $W_0$ frozen. The $\alpha$ is to keep the contribution of LoRA in check and consistent across ranks. We do not want high rank to influence the output in terms of magnitude.
 
@@ -96,7 +90,7 @@ Now we need to define how the matrices are initialised right? Right initialisati
 
 What do we want from LoRA? At the worst, it should not disturb the base model. So we want the initialisation to be such that it doesn't affect the compute to begin with (until it is trained). 
 
-So we want $(W + \Delta W_{init}) \cdot X = W \cdot X$ aka $A_{init} \cdot B_{init} \cdot X = 0^{m \times n}$. This should happen irrespective of what the input $X$ is. So the only way to make this is happen is to initialise to that $A_{init} \cdot B_{init} = 0^{m \times n}$. In practice, as you see below, one of the matrices (generally B) is initialised to all zeros while the other can pick any initialisation. This might be tingling your spidey senses that all zeros is advised against in deep learning in general. But here the presence of $W$ avoids the *said* issue. People have tried alternative initialisations to avoid all zero init. But this is still the standard.
+So we want $(W + \Delta W_{init}) \cdot X = W \cdot X$ aka $A_{init} \cdot B_{init} \cdot X = 0^{m \times n}$. This should happen irrespective of what the input $X$ is. So the only way to make this is happen is to initialisae to that $A_{init} \cdot B_{init} = 0^{m \times n}$. In practice, as you see below, one of the matrices (generally B) is initialised to all zeros while the other can pick any initialisation. This might be tingling your spidey senses that all zeros is advised against in deep learning in general. But here the presence of $W$ avoids the *said* issue. People have tried alternative initialisations to avoid all zero init. But this is still the standard.
 
 ### Implementation
 
@@ -146,7 +140,7 @@ model = get_peft_model(model, peft_config)
 ```
 
 
-## The two ways to go about it 
+### The two ways to go about it 
 
 If you multiply two matrices of shapes `(m,k)` and `(k,n)`, you'd be doing roughly `2mnk` operations. To imagine, for every element in the output of shape `(m,n)` you'd be doing a sum of `k` multiplications aka $C[i,j] = \sum_{l=1}^{k} A[i,l] \cdot B[l,j]$.
 
@@ -212,18 +206,18 @@ We have done the same analysis has been done and the said changes have been impl
 
 When you compare it to a simple linear layer, you are essentially adding more compute on top of the linear layer. Given that we reduce the memory usage for training by a lot and also the fact that gradients update and optimizer state update need not be done for all the parameters, we essentially end up saving some compute as well compared to the full fine-tuning. 
 
-## LoRA in practice
+### LoRA in practice
 
 LoRA is orthogonal to how you modify the base layer weights. So quantizing the base weights and adding LoRA on top of them has become a common theme when it comes to supervised fine tuning. This is typically referred to as QLoRA when you quantize the weights to 4bit. So the gradients and optimizer states still stay in relatively high precision while the base computation happens in lower precision, thus saving quite a lot of memory. 
 
-When doing reinforcement learning with LLMs people traditionally operate within the so called trust region (not venturing too far off from the baseline) to avoid the model drifting off too far from the original baseline. LoRA, in a way, acts as a good regularizer to make sure that the drift is not too much. [Thinking Machines Lab](https://thinkingmachines.ai/blog/lora/) has performed extensive experiments with LoRA for reinforcement learning and found out that it can be as good as training the entire model. Similar observations have been made for supervised fine-tuning as well. 
+When doing reinforcement learning with LLMs people traditionally operate within the trust region to avoid the model drifting off too far from the original baseline. LoRA, in a way, acts as a good regularizer to make sure that the drift is not too much. [Thinking Machines Lab](https://thinkingmachines.ai/blog/lora/) has performed extensive experiments with LoRA for reinforcement learning and found out that it can be as good as training the entire model. Similar observations have been made for supervised fine-tuning as well. 
 
 
 ![LoRA thinky](assets/img/blogs/lora_lore/lora_thinky.jpg)
 _LoRA thinky_
 
 
-## What more does that give us
+### What more does that give us
 
 Well GPU memory savings is something we already established. That is why we formulated all this. But does it give us any more flexibility? The answer is an astounding yes. Given that it takes very little memory on GPU, in decomposed form, the same can be stored directly to disk and be loaded on demand. This means multiple things
 - Sharing adapters is easy. You do not need to store/share gigabytes of full model weights
@@ -232,9 +226,9 @@ Well GPU memory savings is something we already established. That is why we form
 - Infact you can stack multiple adapters and use them together for a given task too.
 - You can customise which layers, which modules you want to apply lora to. In theory you can pick say every 4th layer and apply lora to only `k_proj` there and that would work too, albeit not as good as adding it on everything
 
-## Final thoughts
-This is just an introductory write-up on LoRA and how to go about thinking about LoRA. You can come up with many modifications, like orthogonal initialisation or splitting decomposition in terms of magnitude and direction, like Dora does. The space for exploration is quite vast and also the compute requirement for doing the same is quite low so which is quite appealing. I'd strongly recommend you to try to think of alternatives that one can come up with and see how they perform. At the very least, read my previous blog on trying out different initialisation schemes for LoRA [here](https://datta0.github.io/posts/rethink-lora-init/).
+### Final thoughts
+This is just an introductory write-up on LoRA and how to go about thinking about LoRA. You can come up with many modifications, like orthogonal initialization or splitting decomposition in terms of magnitude and direction, like Dora does. The space for exploration is quite vast and also the compute requirement for doing the same is quite low so which is quite appealing. I'd strongly recommend you to try to think of alternatives that one can come up with and see how they perform. At the very least, read my previous blog on trying out different initialization schemes for LoRA [here](https://datta0.github.io/posts/rethink-lora-init/).
 
-## References
+### References
 1. [LoRA](https://arxiv.org/abs/2106.09685), [DoRA](https://arxiv.org/abs/2402.09353), [QLoRA](https://arxiv.org/abs/2305.14314)
 2. [LoRA without regret](https://thinkingmachines.ai/blog/lora/)
