@@ -9,7 +9,7 @@ render_with_liquid: false
 draft: true
 math: true
 image:
-  path: /assets/img/blogs/flash_attn_intro/flash_attn_header_preview.png
+  path: /assets/img/blogs/flash_attn_intro/flash_attn_header_preview.jpg
   alt: The magic behind FlashAttention
   no_bg: true
 ---
@@ -67,7 +67,7 @@ This is what people mean when they say attention is quadratic in sequence length
 
 Imagine multiplying two large numbers with a calculator that can only add or multiply single digits. You also have a sheet of paper for writing results and a small scratchpad for intermediate work. Assume you cannot do any mental math. The paper is larger than the scratchpad, but it is still limited.
 
-There are two ways to do this. The naive approach is standard long multiplication: write each intermediate row to paper, shift it, and add everything at the end. If each number has $n$ digits, you end up writing on the order of $n^2$ digit slots. As the numbers grow, you can run out of room. But do you really need to store every intermediate row on paper?
+There are two ways to do this. The naive approach is standard long multiplication: write each intermediate row to paper, shift it, and add everything at the end. If each number has $n$ digits, you end up writing on the order of $n^2$ digit slots. As the numbers grow, you can quickly run out of room on the paper. But do you really need to store every intermediate row on paper?
 
 <p><strong>Naive multiplication:</strong> write every intermediate row to paper.</p>
 
@@ -76,7 +76,7 @@ There are two ways to do this. The naive approach is standard long multiplicatio
   <source src="/assets/video/flash_attn_intro/naive_attention_calculator_analogy.mp4" type="video/mp4">
 </video>
 
-The smarter approach is to keep a running total on the scratchpad. You copy the first number, process one digit of the second number at a time, and immediately merge that contribution into the running sum. At any point, the scratchpad only needs enough space for the current block and the running total. You write the final answer back to paper only once.
+One smarter approach is to keep a running total on the scratchpad. You copy the first number, process one digit of the second number at a time, and immediately merge that contribution into the running sum. At any point, the scratchpad only needs enough space for the current block and the running total. You write the final answer back to paper only once.
 
 <p><strong>Smart multiplication:</strong> keep the running state on the scratchpad and write the final answer once.</p>
 
@@ -87,19 +87,15 @@ The smarter approach is to keep a running total on the scratchpad. You copy the 
 
 Both approaches perform the same arithmetic. The difference is where you store intermediate state and how often you write it back.
 
-<p><em>Paper maps to DRAM, the scratchpad maps to SRAM, and the calculator maps to the compute unit.</em></p>
-
-
-
-
 You might ask why not use the paper as rolling storage as well. The problem is that every extra write to paper and every later read back from it adds avoidable overhead. The second approach minimizes those round-trips, so it saves time as well as space.
-
 
 ## A Slight Detour Into GPU Architecture
 
 So how does this map to GPUs? Just like the analogy above, GPUs also have tiered storage. There is large off-chip memory such as HBM or GDDR, which is what people usually mean when they talk about GPU memory. It is typically measured in tens of gigabytes. For example, an NVIDIA H100 has 80 GB of HBM. This is the analogue of the paper in our example.
 
 On-chip storage is much smaller but physically much closer to the compute cores. In practice, what matters for kernels is registers plus shared memory and L1-like storage on each SM. That storage is far faster to access than HBM, but it is tiny by comparison, usually only tens to hundreds of kilobytes of directly useful scratchpad per SM rather than gigabytes. That is the closest match to the scratchpad in our analogy.
+
+![Oversimplified GPU architecture](/assets/img/blogs/flash_attn_intro/gpu_arch.jpg)
 
 If you are careful about the implementation, you can avoid writing the full attention weights to DRAM and save a lot of time in the process.
 
@@ -120,12 +116,12 @@ So with that in mind, the tempting plan would be:
 1. Load query $i$ into SRAM
 2. Load key $j$ and value $j$ into SRAM
 3. Compute $q_i \cdot k_j^T$ in SRAM
-4. Perform the softmax operation
+4. `Perform the softmax operation`
 5. Compute $p_{ij} \cdot v_j$ in SRAM
 6. Repeat steps 2-5 for all $j$
 7. Maintain the running sum
 
-The catch is softmax. That plan is not actually valid, because you need the whole row to compute softmax correctly. You cannot apply softmax element-wise and be done.
+The hurdle is `softmax`. That plan is not actually valid, because you need the whole row to compute softmax correctly. You cannot apply softmax element-wise and be done.
 
 Life would be much easier without that dependency. That is one reason linear attention variants replace softmax with other mechanisms that let them fold the computation differently and avoid materializing expensive attention weights. Here, though, we still have softmax, so we have to handle it carefully.
 
@@ -143,7 +139,7 @@ def softmax(x):
     return output
 ```
 
-For numerical stability, we subtract the row maximum before taking exponentials. Consider
+For numerical stability, we subtract the row maximum before taking exponentials, especially when working in FP16. Consider
 
 $$
 x = [10, 2, 1, 3, 5, 8, 16]
@@ -152,7 +148,7 @@ $$
 If you exponentiate $x$ directly, the largest term dominates and can overflow in formats like FP16:
 
 $$
-e^x \approx [22026, 7.4, 2.7, 20.1, 148.4, 2981, 9 \times 10^6]
+e^x \approx [22026, 7.4, 2.7, 20.1, 148.4, 2981, \sim 9000000]
 $$
 
 $$
@@ -167,17 +163,17 @@ These values are much easier to represent without producing NaNs or infinities.
 
 But this still introduces another dependency, because ideally you want the full row to know both the maximum and the denominator.
 
-The key trick in FlashAttention is not to compute a "partial softmax" and patch it up later. Instead, we maintain just enough running statistics for each query row so that each new KV block can be merged into what we have already processed.
+The key trick here is to compute a "partial softmax" and patch it up later.
 
 So the plan is to
 
 1. Keep the exponent stable as the row maximum changes
-2. Keep the denominator in a streaming fashion
-3. Keep the weighted value sum in a streaming fashion as well
+2. Calculate the denominator in a streaming fashion
+3. Update the weighted value sum in a streaming fashion as well
 
 ### Stabilizing the exponent
 
-The key idea here is that we do not load just one key/value pair. We load a small block, compute a block of scores, and update a running summary for each query row. Let the full score row for query $i$ be $[s_{i1}, s_{i2}, \dots, s_{in}]$, partitioned into blocks $B_1, B_2, \dots, B_T$.
+The key idea here is that we do not load just one key/value pair. We load a small block of those, say 64, compute a block of scores, and update a running summary for each query row. Let the full score row for query $i$ be $[s_{i1}, s_{i2}, \dots, s_{in}]$, partitioned into blocks $B_1, B_2, \dots, B_T$.
 
 Before going to the full recurrence, let us see the smaller algebraic trick. Suppose we split a row into two chunks:
 
@@ -189,7 +185,7 @@ For each chunk, define
 
 $$
 m^{(a)} = \max(x^{(a)}), \qquad
-\ell^{(a)} = \sum_j e^{x^{(a)}_j - m^{(a)}}
+\ell^{(a)} = \sum_j e^{x^{(a)}_j - m^{(a)}} \quad \text{(partial sum)}
 $$
 
 and for the whole concatenated row define
@@ -202,19 +198,20 @@ Then the denominator of the stable softmax can be rewritten as
 
 $$
 \sum_j e^{x_j - m}
-= \sum_j e^{x^{(1)}_j - m} + \sum_j e^{x^{(2)}_j - m}
+= \sum_{j \in B_1} e^{x^{(1)}_j - m} + \sum_{j \in B_2} e^{x^{(2)}_j - m}
 $$
 
 $$
-= e^{m^{(1)} - m} \sum_j e^{x^{(1)}_j - m^{(1)}} +
-   e^{m^{(2)} - m} \sum_j e^{x^{(2)}_j - m^{(2)}}
+= e^{m^{(1)} - m} \sum_{j \in B_1} e^{x^{(1)}_j - m^{(1)}} +
+   e^{m^{(2)} - m} \sum_{j \in B_2} e^{x^{(2)}_j - m^{(2)}}
 $$
 
 $$
-= e^{m^{(1)} - m} \ell^{(1)} + e^{m^{(2)} - m} \ell^{(2)}
+= e^{m^{(1)} - m} \ell^{(1)} \quad \quad \quad \quad \text{(rescale old sum)}   \\
++ e^{m^{(2)} - m} \ell^{(2)} \quad \quad \quad \quad \text{(add new sum)}
 $$
 
-That is the key identity. When the reference max changes, we do not lose old work. We simply rescale the old partial sum to the new max and add the new chunk.
+That is the key identity. When the reference max changes, we rescale the old chunk to the new max and keep going.
 
 The exact same trick works for the weighted numerator as well. If
 
@@ -344,10 +341,13 @@ def flash_fwd_kernel(
     q = tl.load(q_ptrs, mask=q_mask, other=0.0)
 
     # These are exactly the running statistics from the math above.
+    # we chose to do these in float32 for higher precision and range.
+    # This incurs some more additional cost but wouldn't effect the order of magnitude
     m_i = tl.full((BLOCK_M,), float("-inf"), dtype=tl.float32)
     l_i = tl.zeros((BLOCK_M,), dtype=tl.float32)
     acc = tl.zeros((BLOCK_M, BLOCK_D), dtype=tl.float32)
 
+    # Iterate over batches of keys/values of size BLOCK_N
     for start_n in tl.range(0, N_CTX, BLOCK_N):
         k_ptrs = k_ptr + (start_n + offs_n)[:, None] * stride_km + offs_d[None, :] * stride_kk
         v_ptrs = v_ptr + (start_n + offs_n)[:, None] * stride_vm + offs_d[None, :] * stride_vk
@@ -374,10 +374,12 @@ def flash_fwd_kernel(
         acc = alpha[:, None] * acc + tl.dot(p, v)
         m_i = new_m_i
 
+    # Final softmax and normalization
     out = acc / l_i[:, None]
 
     o_ptrs = o_ptr + offs_m[:, None] * stride_om + offs_d[None, :] * stride_ok
     o_mask = (offs_m[:, None] < N_CTX) & (offs_d[None, :] < D)
+    # write O back to DRAM. The only DRAM write    
     tl.store(o_ptrs, out, mask=o_mask)
 
 
@@ -441,16 +443,16 @@ Under the usual two-stage implementation, we first compute $S = QK^T$ and store 
 
 **Step 1: Compute $S = QK^T$**
 
-- Read $Q$ and $K$: $2 \cdot (n d) \cdot 2 = 4nd$ bytes
-- FLOPs for $QK^T$: $2n^2d$
-- Write $S \in \mathbb{R}^{n \times n}$: $2n^2$ bytes
+- Read $Q$ and $K$: $\quad 2 \cdot (n d) \cdot 2 = 4nd$ bytes
+- FLOPs for $QK^T$: $\quad 2n^2d$
+- Write $S \in \mathbb{R}^{n \times n}$: $\quad 2n^2$ bytes
 
 **Step 2: Compute $O = \text{softmax}(S)V$**
 
-- Read $S$ and $V$: $2n^2 + 2nd$ bytes
-- FLOPs for $PV$: $2n^2d$
+- Read $S$ and $V$: $\quad 2n^2 + 2nd$ bytes
+- FLOPs for $PV$: $\quad 2n^2d$
 - Softmax itself is element-wise/reduction work on $n^2$ entries, so it adds $\Theta(n^2)$ operations
-- Write $O \in \mathbb{R}^{n \times d}$: $2nd$ bytes
+- Write $O \in \mathbb{R}^{n \times d}$: $\quad 2nd$ bytes
 
 So in this simplified model, total DRAM traffic is
 
@@ -496,10 +498,10 @@ For one pair of tiles, the work is
 
 **Per tile compute**
 
-- $Q_i K_j^T$: $2 b_q b_k d$ FLOPs
-- Online softmax stats on the $[b_q, b_k]$ score tile: $\Theta(b_q b_k)$ ops
-- Multiply by values: $2 b_q b_k d$ FLOPs
-- Rescale and update the running output/statistics: $\Theta(b_q d)$ ops
+- $Q_i K_j^T$: $ \quad 2 b_q b_k d$ FLOPs
+- Online softmax stats on the $[b_q, b_k]$ score tile: $\quad \Theta(b_q b_k)$ ops
+- Multiply by values: $ \quad 2 b_q b_k d$ FLOPs
+- Rescale and update the running output/statistics: $\quad \Theta(b_q d)$ ops
 
 So one tile costs
 
@@ -522,9 +524,9 @@ So again, the arithmetic is still quadratic in sequence length.
 
 For IO, assume the current query tile and its running accumulators stay on-chip while we sweep over all KV tiles. Then for one query tile:
 
-- Read $Q_i$: $2 b_q d$ bytes
+- Read $Q_i$: $\quad 2 b_q d$ bytes
 - For each KV tile, read $K_j$ and $V_j$: $\frac{n}{b_k} \cdot 4 b_k d = 4nd$ bytes
-- Write final $O_i$: $2 b_q d$ bytes
+- Write final $O_i$: $\quad 2 b_q d$ bytes
 
 So one query tile costs
 
@@ -572,33 +574,30 @@ u_i \in \mathbb{R}^{b_q \times d}, \quad
 \ell_i, m_i \in \mathbb{R}^{b_q}
 $$
 
-plus transient score or probability fragments of size about $b_q \times b_k$, depending on how the kernel schedules the computation. So the on-chip footprint is on the order of
+plus transient score or probability fragments of size about $b_q \times b_k$, depending on how the kernel schedules the computation. So the on-chip footprint is, instead of needing space for an $n \times n$ matrix, on the order of
 
 $$
 \Theta\big((b_q + b_k)d + b_q b_k\big)
 $$
-
-instead of needing space for an $n \times n$ matrix.
 
 
 ## Results
 
 Let's take a quick look at the performance and memory usage of the two implementations.
 
-![FlashAttention Time vs Sequence Length](/assets/img/blogs/flash_attn_intro/flash_attention_time.png)
+![FlashAttention Time vs Sequence Length](/assets/img/blogs/flash_attn_intro/flash_attention_time.jpg)
 
-The companion benchmark script measures forward-only, non-causal BF16 attention and reports peak extra memory as `torch.cuda.max_memory_allocated() - baseline_alloc`. In the run shown here, the Triton kernel is still an educational sketch rather than a production-quality kernel, so the speedup on the B200 is only modest. With auto-tuning, better work partitioning, and a more mature implementation, you should expect better numbers.
+The companion benchmark script measures forward-pass BF16 attention and reports the peak memory used by the attention operation. In the run shown here, the Triton kernel is still an educational sketch rather than a production-quality kernel, so the speedup on the B200 is modest. With auto-tuning, better partitioning, and a more optimized implementation, you should expect better numbers.
 
 As for memory, FlashAttention uses far less than standard attention, as shown below:
 
-![FlashAttention Memory Usage](/assets/img/blogs/flash_attn_intro/flash_attention_memory.png)
-
+![FlashAttention Memory Usage](/assets/img/blogs/flash_attn_intro/flash_attention_memory.jpg)
 
 It almost looks as if the memory usage does not increase with sequence length. That is not a bug, but it is easy to misread. FlashAttention still has memory use that grows with sequence length because the inputs and outputs still grow. What disappears is the extra quadratic-sized score tensor. On a linear-scale plot, the quadratic growth of the baseline drives the axis so high that the much smaller increase from FlashAttention becomes hard to see. The log plot below makes the difference in slopes much clearer.
 
-![FlashAttention Memory Usage Log Plot](/assets/img/blogs/flash_attn_intro/flash_attention_memory_log.png)
+![FlashAttention Memory Usage Log Plot](/assets/img/blogs/flash_attn_intro/flash_attention_memory_log.jpg)
 
-If you publish benchmark plots like these, it is worth listing the exact command line as well: head dimension, number of query heads, number of KV heads, tile sizes, warmup and measurement iterations, and whether the baseline eventually hit OOM. Those details matter a lot when readers try to compare results across kernels or GPUs.
+Notice the difference in slope between the two lines there. It is a useful exercise to reason through why the slopes differ and by how much analytically.
 
 
 ## A Few More Things and Final Thoughts

@@ -13,7 +13,7 @@ By default, this benchmarks sequence lengths:
 
 It writes:
 - a CSV with timing and peak-memory numbers
-- a PNG with time-vs-sequence-length and memory-vs-sequence-length plots
+- JPG plots with time-vs-sequence-length and memory-vs-sequence-length charts
 """
 
 from __future__ import annotations
@@ -572,23 +572,23 @@ def main() -> None:
         )
 
     csv_path = args.out_dir / "flash_attention_benchmark.csv"
-    png_path = args.out_dir / "flash_attention_benchmark.png"
-    time_png_path = args.out_dir / "flash_attention_time.png"
-    memory_png_path = args.out_dir / "flash_attention_memory.png"
-    memory_log_png_path = args.out_dir / "flash_attention_memory_log.png"
+    benchmark_plot_path = args.out_dir / "flash_attention_benchmark.jpg"
+    time_plot_path = args.out_dir / "flash_attention_time.jpg"
+    memory_plot_path = args.out_dir / "flash_attention_memory.jpg"
+    memory_log_plot_path = args.out_dir / "flash_attention_memory_log.jpg"
 
     save_csv(rows, csv_path)
-    plot_results(rows, png_path)
-    plot_time_results(rows, time_png_path)
-    plot_memory_results(rows, memory_png_path)
-    plot_memory_log_results(rows, memory_log_png_path)
+    plot_results(rows, benchmark_plot_path)
+    plot_time_results(rows, time_plot_path)
+    plot_memory_results(rows, memory_plot_path)
+    plot_memory_log_results(rows, memory_log_plot_path)
 
     print()
     print(f"Saved CSV to {csv_path}")
-    print(f"Saved plot to {png_path}")
-    print(f"Saved time plot to {time_png_path}")
-    print(f"Saved memory plot to {memory_png_path}")
-    print(f"Saved log-memory plot to {memory_log_png_path}")
+    print(f"Saved plot to {benchmark_plot_path}")
+    print(f"Saved time plot to {time_plot_path}")
+    print(f"Saved memory plot to {memory_plot_path}")
+    print(f"Saved log-memory plot to {memory_log_plot_path}")
 
 
 if __name__ == "__main__":
