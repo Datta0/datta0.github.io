@@ -1,6 +1,6 @@
 ---
-title: FlashAttention
-description: The magic behind FlashAttention
+title: The MathemaTricks behind FlashAttention
+description: Fast and memory efficient exact attention
 author: datta0
 date: 2026-04-12T14:30:00+05:30
 categories: [Transformer, Attention, GPU, Kernels, Training, Finetuning, Math]
@@ -100,7 +100,7 @@ If you are careful about the implementation, you can avoid writing the full atte
 
 One difference from the analogy is that a GPU has many compute units and many on-chip memories working in parallel, while they all still share the same DRAM.
 
-## The Math
+## The Math-e-Magics
 
 The analogy is useful, but the key question is whether the math still works. It does. Each query row can be processed independently of the other query rows. The output for query $i$ depends on all keys and values, but it does not depend on the outputs of any other queries. That is similar to one row of long multiplication depending on one digit of the multiplier and all digits of the multiplicand.
 
@@ -604,6 +604,8 @@ Notice the difference in slope between the two lines there. It is a useful exerc
 One thing I intentionally skipped here is the backward pass. In many training setups, people use gradient checkpointing, which means activations are either offloaded or discarded and recomputed during backpropagation. FlashAttention uses the same general idea there as well: save a small amount of summary state, then recompute what you need instead of storing the full attention matrix. Many of the same gains show up in the backward pass too, sometimes even more strongly. I may cover the backward pass of FlashAttention in a future post, but this one is already long enough.
 
 This is a good example of how much performance you can recover just by thinking carefully about systems and data movement. I have written previously about how [tensor parallelism approaches](https://datta0.github.io/posts/understanding-multi-gpu-parallelism-paradigms/) can be combined to reduce inter-GPU communication during inference in systems like vLLM. FlashAttention is another case where the real win comes from how the computation is scheduled and stored, not from changing the high-level objective.
+
+That is it from my side for today. Feel free to share your thoughts, comments and feedback. Will be back again with more mathematricks! Until then, Ciao!
 
 ## References
 - [FlashAttention paper](https://arxiv.org/abs/2205.14135)
