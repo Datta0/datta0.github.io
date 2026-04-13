@@ -6,7 +6,6 @@ date: 2026-03-23T14:30:00+05:30
 categories: [LoRA, Transformer, Training, Finetuning, Math]
 tags: [LoRA, Transformer, Training, Finetuning, Math]
 render_with_liquid: false
-draft: true
 math: true
 image:
   path: /assets/img/blogs/lora_lore/lora_header.jpg

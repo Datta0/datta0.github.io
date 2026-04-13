@@ -6,7 +6,6 @@ date: 2026-02-24T14:30:00+05:30
 categories: [Mixture of Experts, Transformer, FFNN, Math]
 tags: [Mixture of Experts, Transformer, FFNN, Math]
 render_with_liquid: false
-draft: true
 math: true
 image:
   path: /assets/img/blogs/moe_journey/moe_header.jpg

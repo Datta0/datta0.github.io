@@ -6,7 +6,6 @@ date: 2026-04-12T14:30:00+05:30
 categories: [Transformer, Attention, GPU, Kernels, Training, Finetuning, Math]
 tags: [Transformer, Attention, GPU, Kernels, Training, Finetuning, Math]
 render_with_liquid: false
-draft: true
 math: true
 image:
   path: /assets/img/blogs/flash_attn_intro/flash_attn_header_preview.jpg

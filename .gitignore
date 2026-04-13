@@ -5,6 +5,10 @@
 !.nojekyll
 !.travis.yml
 
+# macOS / Python clutter
+.DS_Store
+__pycache__/
+
 # Bundler cache
 .bundle
 vendor
@@ -34,11 +38,7 @@ assets/js/dist
 assets/lib
 
 # Chirpy
-.travis.yml
 bin/
-assets/js/dist/
-Gemfile.lock
-*.gem
 *.gemspec
 docs/
 tools/
