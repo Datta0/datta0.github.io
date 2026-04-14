@@ -138,7 +138,7 @@ def softmax(x):
     return output
 ```
 
-For numerical stability, we subtract the row maximum before taking exponentials, especially when working in FP16. Consider
+For numerical stability, we subtract the row maximum before taking exponentials, especially when working in FP16 where the max value is only around 65,000. Consider
 
 $$
 x = [10, 2, 1, 3, 5, 8, 16]
@@ -183,31 +183,36 @@ $$
 For each chunk, define
 
 $$
-m^{(a)} = \max(x^{(a)}), \qquad
-\ell^{(a)} = \sum_j e^{x^{(a)}_j - m^{(a)}} \quad \text{(partial sum)}
+m^{(a)} = \max(x^{(a)}) \qquad \quad \text{max of the chunk} \\
+\ell^{(a)} = \sum_j e^{x^{(a)}_j - m^{(a)}} \quad \quad \text{Partial sum}
 $$
 
 and for the whole concatenated row define
 
 $$
-m = \max(x) = \max(m^{(1)}, m^{(2)})
+m = \max(x) = \max(m^{(1)}, m^{(2)}) \quad \quad \text{max of the union}
 $$
 
 Then the denominator of the stable softmax can be rewritten as
 
 $$
 \sum_j e^{x_j - m}
-= \sum_{j \in B_1} e^{x^{(1)}_j - m} + \sum_{j \in B_2} e^{x^{(2)}_j - m}
+= \sum_{j \in B_1} e^{x^{(1)}_j - m} + \sum_{j \in B_2} e^{x^{(2)}_j - m} \quad \quad \quad \quad \text{(split the sum)}
 $$
 
 $$
 = e^{m^{(1)} - m} \sum_{j \in B_1} e^{x^{(1)}_j - m^{(1)}} +
    e^{m^{(2)} - m} \sum_{j \in B_2} e^{x^{(2)}_j - m^{(2)}}
+   \quad \quad \text{(adjust to partial max)}
 $$
 
 $$
 = e^{m^{(1)} - m} \ell^{(1)} \quad \quad \quad \quad \text{(rescale old sum)}   \\
 + e^{m^{(2)} - m} \ell^{(2)} \quad \quad \quad \quad \text{(add new sum)}
+$$
+
+$$
+ = e^{m^{(1)} - m} \ell^{(1)} + e^{m^{(2)} - m} \ell^{(1)} \quad \quad \quad \quad \quad
 $$
 
 That is the key identity. When the reference max changes, we rescale the old chunk to the new max and keep going.
@@ -227,7 +232,7 @@ $$
 
 Now we simply apply this same algebra repeatedly, one KV block at a time.
 
-With initialization $m_i^{(0)} = -\infty$, $\ell_i^{(0)} = 0$, and $u_i^{(0)} = 0$, for the first $t$ blocks we maintain three quantities:
+With initialization $m_i^{(0)} = -\infty$ (so exp(-∞) = 0), $\ell_i^{(0)} = 0$, and $u_i^{(0)} = 0$, for the first $t$ blocks we maintain three quantities:
 
 $$
 m_i^{(t)} = \max_{j \in B_1 \cup \dots \cup B_t} s_{ij}
