@@ -16,12 +16,16 @@ image:
 
 ## Introduction
 
+**Prerequisites:** transformer MLP blocks, basic matrix multiplication cost, and the idea of routing tokens through model components.
+
+**What you'll get:** why MoE increases capacity without activating every parameter, how routing works, and why token choice and expert choice have different tradeoffs.
+
 Previously we have talked about [Transformer and attention being re-imagined](https://datta0.github.io/posts/transformer-imagined/) from the first principles. While that gives a very good understanding of how transformers work, specifically the attention mechanism, there has been a lot of progress ever since. One of the under-represented parts of the transformer is the FFNN. 
 MoE or mixture of experts is a natural continuation of the same. Today we'll try to reimagine the same.
 
 ## FFNN
 Let's start with the FFN. Attention is all cool but attention doesn't mix features with one another. It only brings you the information from the other tokens so get a context of what you're surrounded by thus giving you an idea of what you potentially are. But the model also needs to know which features of the token are important and which are potentially discardable given the context. This is pretty much the job of FFNN. Here we try to separate the features of interest from the non-interesting features. Given a token and its features, we project it from the model dimension to a higher dimension called the MLP dimension, or intermediate size, and apply a nonlinearity element-wise to achieve that.
-In the recent past, we have Gated Linear unit as the buiding block which goes as follows:
+In the recent past, we have Gated Linear unit as the building block which goes as follows:
 
 $$
 \begin{aligned}
@@ -55,7 +59,7 @@ So for an input $X \in \mathbb{R}^{d}$ (single token), we need a matrix that tak
 
 The input dimension cannot be compromised on. What can be changeed is the output dimension. What does it mean to the operations? Essentially we find a smaller dimension, say `n`, such that we predict `n` values per input and then use those values to pick `some` of the $d_{mlp}$ columns. But we should be careful as to not involve any more non simple, non trivial transformations on the said `n` that adds to the compute and parameter cost. When tasked with such constraints, always try to pick the simplest way out. So instead of having to take a decision for each of the columns, what if we take a single decision for a group of columns? This essentially is equivalent to saying, "Let us group $d_{mlp}$ columns into $k$ buckets, and for each bucket we decide whether to use it or not".  
 
-Lets see how (much) that reduces our compute. If we multiply a matrix of shape `(m,k)` with another matrix of shape `(k,n)` to get an output of shape `(m,n)`, we're doing `O(mnk)` computations. You can visualise this by taking the perspective of the ouptut.
+Let's see how much that reduces our compute. If we multiply a matrix of shape `(m,k)` with another matrix of shape `(k,n)` to get an output of shape `(m,n)`, we're doing `O(mnk)` computations. You can visualise this by taking the perspective of the output.
 For each of the values in the output, we need to do a dot product between vectors of size `k`. So we do `k` multiplications and `k-1` additions (of `k` numbers). And we have `m*n` such values. So the total computation is `O(mnk)`. If you consider addition and multiplication as 1 operation, we're looking at `~2mnk` ops. Please excuse the abuse of O notation here :).
 
 So initially for **s tokens**, to perform full computation (MLP), we have:
@@ -207,7 +211,7 @@ $$
 Inference is straightforward. You have a token; you get the preference scores for each of the buckets, called **experts**, and pick the top few among them to pass the activations through those experts. 
 Sweet and simple. One should ideally forward pass through all the chosen `k` experts parallelly.
 
-For trainig, you have `s` tokens instead of `1` like we discussed above. Each token has its own `k` preferred experts among the `n`. So the task becomes more tricky to first calculate the router scores, find out top-k per token, then somehow pass the set of appropriate tokens for each expert. pytorch has an operation to do all this parallelly called [`torch._grouped_mm`](https://docs.pytorch.org/docs/main/generated/torch.nn.functional.grouped_mm.html). We also made LoRA training on MoE more efficient at [Unsloth](https://unsloth.ai/). [Check out here](https://unsloth.ai/docs/new/faster-moe).
+For training, you have `s` tokens instead of `1` like we discussed above. Each token has its own `k` preferred experts among the `n`. So the task becomes more tricky to first calculate the router scores, find out top-k per token, then somehow pass the set of appropriate tokens for each expert. PyTorch has an operation to do all this in parallel called [`torch._grouped_mm`](https://docs.pytorch.org/docs/main/generated/torch.nn.functional.grouped_mm.html). We also made LoRA training on MoE more efficient at [Unsloth](https://unsloth.ai/). [Check out here](https://unsloth.ai/docs/new/faster-moe).
 
 One caveat we've been brushing under the rug so far, what if an expert is not chosen by any token? It is not involved in the forward pass, hence wouldn't be involved in the backward pass either. So it gets no chance to get better to be potentially be preferred by tokens in the future. This is a vicious cycle. So expert utilisation being (approximately) uniform is an important thing. There are a few ways to enfoce this.
 
@@ -235,7 +239,7 @@ $$
 
 So far we've been talking about tokens picking experts which might lead to imbalance. But what if we flip the problem on its head? What if we let the experts pick the tokens? This is called expert choice routing famously used in Llama 4 family of models.
 
-Each expert has its own ranking mechanism and picks only the top-k among the many tokens. But this has a serious flaw hiding underneath. This breaks causality. In token choice, each token is independently routed to experts irrespective of the existence of other tokens. Here though it is different. Lets see a small example. 
+Each expert has its own ranking mechanism and picks only the top-k among the many tokens. But this has a serious flaw hiding underneath. This breaks causality. In token choice, each token is independently routed to experts irrespective of the existence of other tokens. Here though it is different. Let's see a small example. 
 
 Assume each expert picks only 1 token. If expert 1 prefers token a over token b, then in presence of both the tokens, expert 1 will pick `a`. But if `a` is not present expert 1 will pick `b`. So essentially we're leaking information to `b` whether `a` is present in the sequence or not. Leaking because, `b` can be earlier in the sequence than `a`. This breaks causality. Perhaps potentially (among the many reasons) why llama 4 is not up to the mark.
 

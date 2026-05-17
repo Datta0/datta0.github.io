@@ -50,7 +50,7 @@ For example, if you have the following sentences:
 - What is the capital city of India?
 - What city is the capital city of India?
 
-The answer to all these questions is still the same. But having more occurances of the word "capital" would push the answer much more towards the word "capital", hence away from the original answer "Delhi".
+The answer to all these questions is still the same. But having more occurrences of the word "capital" would push the answer much more towards the word "capital", hence away from the original answer "Delhi".
 
 How do we then tackle these two issues?
 One approach that comes to mind is average. Average is a very good operation to consider. Much better than just a summation. This solves the problem of the sum being arbitrarily large.
@@ -110,7 +110,7 @@ Consider the word `bat`. It can mean one of the following:
 - (n) A baseball bat
 - (v) The act of *batting*
 
-To determine whether the occurance is one of the above, you can ask different questions. Whether it is in the context of an animal or living being or whether it is in the context of a sport. Even then both might co-occur in the same sentence. So to take cure of multiple such words carrying multiple differnt meanings based on the context, you might want to capture multiple relationships/similarities for/with the same word.
+To determine whether the occurrence is one of the above, you can ask different questions. Whether it is in the context of an animal or living being or whether it is in the context of a sport. Even then both might co-occur in the same sentence. So to take care of multiple such words carrying multiple different meanings based on the context, you might want to capture multiple relationships/similarities for/with the same word.
 
 So the usage of transformation to capture multiple relationships/similarities for/with the same word is justified.
 

@@ -4,7 +4,7 @@ title: Transformer showdown MHA vs MLA vs nGPT vs Differential Transformer
 description: Comparing various transformer architectures like MHA, GQA, Multi Latent Attention, nGPT, Differential Transformer.
 date: 2025-01-22 20:27 +0530
 categories: [Transformer, Architectures]
-tags: [MLA, MHA, GQA, Multi Latent Attention, nGPT, Differential Transformer,kv cache, activations, memory, trainig, nanoformer]
+tags: [MLA, MHA, GQA, Multi Latent Attention, nGPT, Differential Transformer, KV cache, activations, memory, Training, nanoformer]
 math: true
 image:
   path: /assets/img/blogs/transformer_showdown/attn_variants.jpg
@@ -14,7 +14,7 @@ image:
 # Transformer Showdown
 
 For a long time, I had the urge to understand what advantages each of the changes to transformer architecture gives. I created a small repo that I like to call [nanoformer](https://github.com/Datta0/nanoformer) where I compare various architectures like MHA, GQA, Multi Latent Attention, nGPT and Differential Transformer. Switching between the mentioned architectures is as easy as modifying a CLI argument.
-So without further ado, lets get comparing. 
+So without further ado, let's get comparing. 
 
 ## Attention variants:
 

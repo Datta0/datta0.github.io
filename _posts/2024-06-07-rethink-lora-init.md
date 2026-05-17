@@ -1,19 +1,19 @@
 ---
-title: Rethink LoRA initialisations for faster convergence
-description: A better initialisation for LoRA to make convergence faster
+title: Rethink LoRA initializations for faster convergence
+description: A better initialization for LoRA to make convergence faster
 author: datta0
 date: 2024-06-07T03:06:01+00:00
-categories: [LoRA, Fine tuning, LLM]
-tags: [LoRA, Fine tuning, LLM]
+categories: [LoRA, Fine-tuning, LLM]
+tags: [LoRA, Fine-tuning, LLM]
 render_with_liquid: false
 math: true
 image:
   path: /assets/img/blogs/know_lora/lora.jpg
-  alt: LoRA Fine tuning, modification, analysis and findings
+  alt: LoRA fine-tuning, modification, analysis and findings
 ---
 
 
-# Rethink LoRA initialisations for faster convergence
+# Rethink LoRA initializations for faster convergence
 
 ## What is LoRA
 
@@ -27,11 +27,11 @@ Here W are the initial weights and ΔW is the change in weights upon fine tuning
 Such versatility and flexibility propelled LoRA to become the most used PEFT technique and the best part is, this is model agnostic. So any model that has linear layers, can use this. It has been very famous in both Image generation and NLP worlds off late.
 
 ## LoRA Initialization
-Now comes the question. If we add another weight to existing weight matrix, wouldn't it put the model off? Yes, adding any random stuff does impact the model quality. But to ensure that at initialisation model doesn't suffer from such issues, we initialise matrices `A` and `B` such that the product `ΔW = AB = 0`.
+Now comes the question. If we add another weight to existing weight matrix, wouldn't it put the model off? Yes, adding any random stuff does impact the model quality. But to ensure that at initialization model doesn't suffer from such issues, we initialize matrices `A` and `B` such that the product `ΔW = AB = 0`.
 
-But how do you do that? Initialising both to zero is a viable option but would inhibit the model from learning. So the original paper proposes to initialise A with [kaiming uniform](https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.kaiming_uniform_) (just uniform initialisation with differnt range parameter). So problem solved right? We now have a non zero A and a zero B such that `AB = 0`. Well technically yes and this has been working for long. So why change it huh?
+But how do you do that? Initializing both to zero is a viable option but would inhibit the model from learning. So the original paper proposes to initialize A with [kaiming uniform](https://pytorch.org/docs/stable/nn.init.html#torch.nn.init.kaiming_uniform_) (just uniform initialization with different range parameter). So problem solved right? We now have a non zero A and a zero B such that `AB = 0`. Well technically yes and this has been working for long. So why change it huh?
 
-Well I wasn't really satisified with this. I thought, why not try out some different initialisations? But the trick here is to also ensure that our initialisation follows `AB = 0`. So thoughts come to your mind? The first and easiest one is to reverse the initialisations aka setting `A = 0` and `B = kaiming_uniform`. 
+Well I wasn't really satisfied with this. I thought, why not try out some different initializations? But the trick here is to also ensure that our initialization follows `AB = 0`. So thoughts come to your mind? The first and easiest one is to reverse the initializations aka setting `A = 0` and `B = kaiming_uniform`. 
 
 If you take the example of llama-3-8B, here's how the model looks like after injecting LoRA adapters of rank 8
 

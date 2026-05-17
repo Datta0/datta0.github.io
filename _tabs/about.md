@@ -4,16 +4,25 @@ icon: fas fa-info-circle
 order: 4
 ---
 
-### Hi there 👋, I'm Datta Nimmaturi
+### Hi, I'm Datta Nimmaturi
 
-<img src="{{ '/assets/img/me.jpg' | relative_url }}" alt="Datta Nimmaturi" style="width: 360px; float: right">
+<img src="{{ '/assets/img/me.jpg' | relative_url }}" alt="Datta Nimmaturi" width="360" height="270" decoding="async" style="width: 360px; max-width: 100%; height: auto; float: right; margin: 0 0 1rem 1.5rem;">
 
-- 🎓 I hold Bachelor's degree in [Mathematics and Computer Science](https://math.iith.ac.in/btech.php) from IIT Hyderabad
-- 💻 Currently working at [Unsloth](https://unsloth.ai).
-- 🤖 Have a huge interest in Maths, Deep Learning and Deep Reinforcement Learning
-- ❤️ Also Love Chess, Cricket and Tinkering with Operating Systems
-- Reach out to me via: [Discord](https://discord.com/users/723206433608433714), [Twitter](https://twitter.com/im_datta0), [Email](mailto:venkatadattasainimmaturi@gmail.com)
-- 📝 I also write another blog on substack summarising ML Research papers. [Check it out](https://datta0.substack.com) and here's a preview...
+I work at [Unsloth](https://unsloth.ai) and write about the parts of deep learning that become clearer when you build them from first principles: attention, fine-tuning, GPU kernels, model parallelism, and the math behind LLM systems.
+
+My goal with this blog is to make technical ideas feel inspectable. Most posts start with an intuition, turn it into math or code, and then connect it back to practical systems behavior.
+
+Good starting points:
+
+- [Attention and Transformer Imagined]({{ '/posts/transformer-imagined/' | relative_url }}) for the foundation.
+- [The MathemaTricks behind FlashAttention]({{ '/posts/flash-attention/' | relative_url }}) for GPU-aware attention.
+- [Understanding multi-GPU Parallelism paradigms]({{ '/posts/understanding-multi-gpu-parallelism-paradigms/' | relative_url }}) for distributed inference and training.
+
+I studied Mathematics and Computer Science at [IIT Hyderabad](https://math.iith.ac.in/btech.php). Outside work, I spend time on chess, cricket, operating-system tinkering, and deep reinforcement learning.
+
+Reach out via [Discord](https://discord.com/users/723206433608433714), [X/Twitter](https://twitter.com/im_datta0), [LinkedIn](https://www.linkedin.com/in/datta0), or [email](mailto:venkatadattasainimmaturi@gmail.com).
+
+I also write short ML research-paper summaries on [Substack](https://datta0.substack.com). Here's a preview:
 
 
 <!-- Feed embed code -->

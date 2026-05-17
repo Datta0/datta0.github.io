@@ -3,8 +3,8 @@ title: The MathemaTricks behind FlashAttention
 description: Fast and memory efficient exact attention
 author: datta0
 date: 2026-04-12T14:30:00+05:30
-categories: [Transformer, Attention, GPU, Kernels, Training, Finetuning, Math]
-tags: [Transformer, Attention, GPU, Kernels, Training, Finetuning, Math]
+categories: [Transformer, Attention, GPU, Kernels, Training, Fine-tuning, Math]
+tags: [Transformer, Attention, GPU, Kernels, Training, Fine-tuning, Math]
 render_with_liquid: false
 math: true
 image:
@@ -14,6 +14,10 @@ image:
 ---
 
 ## Introduction
+
+**Prerequisites:** basic transformer attention, softmax, matrix multiplication, and a rough idea of GPU memory hierarchy.
+
+**What you'll get:** why standard attention is memory hungry, how online softmax makes tiling exact, and why FlashAttention speeds things up without removing the quadratic query-key interaction.
 
 In [Attention and Transformers, Imagined](https://datta0.github.io/posts/transformer-imagined/), we built up the idea of attention from first principles. As a quick refresher, given a sequence of tokens, we compute query, key, and value matrices, and the final attention output is
 
@@ -609,6 +613,8 @@ Notice the difference in slope between the two lines there. It is a useful exerc
 One thing I intentionally skipped here is the backward pass. In many training setups, people use gradient checkpointing, which means activations are either offloaded or discarded and recomputed during backpropagation. FlashAttention uses the same general idea there as well: save a small amount of summary state, then recompute what you need instead of storing the full attention matrix. Many of the same gains show up in the backward pass too, sometimes even more strongly. I may cover the backward pass of FlashAttention in a future post, but this one is already long enough.
 
 This is a good example of how much performance you can recover just by thinking carefully about systems and data movement. I have written previously about how [tensor parallelism approaches](https://datta0.github.io/posts/understanding-multi-gpu-parallelism-paradigms/) can be combined to reduce inter-GPU communication during inference in systems like vLLM. FlashAttention is another case where the real win comes from how the computation is scheduled and stored, not from changing the high-level objective.
+
+**Key takeaways:** FlashAttention is exact attention with a better IO schedule. It keeps the arithmetic quadratic, removes the quadratic attention matrix from DRAM, and uses online softmax to safely merge tiled partial results.
 
 That is it from my side for today. Feel free to share your thoughts, comments and feedback. Will be back again with more mathematricks! Until then, Ciao!
 

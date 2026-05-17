@@ -1,5 +1,6 @@
 ---
-title: Understanding multi GPU Parallelism paradigms
+title: Understanding multi-GPU Parallelism paradigms
+description: A practical guide to data, tensor, and pipeline parallelism for LLM inference and training
 date: '2025-07-06 16:33:31 +0530'
 author: datta0
 categories: [Attention, Transformer, FFNN, GPU, Parallelism, vLLM, Inference]
@@ -12,6 +13,10 @@ image:
   path: /assets/img/blogs/parallelism/parallelism.jpg
   alt: GPU parallelism and LLMs
 ---
+
+**Prerequisites:** transformer inference or training at a high level, matrix multiplication, and the difference between latency and throughput.
+
+**What you'll get:** when data parallelism, tensor parallelism, and pipeline parallelism are useful, what each one communicates, and why the right choice depends on whether the model fits on one device.
 
 We've been talking about Transformers all this while. But how do we get the most out of our hardware? There are two different paradigms that we can talk about here.
 One case where your model happily fits on one GPU but you have many GPUs at your disposal and you want to save time by distributing the workload across multiple GPUs.
@@ -191,7 +196,7 @@ If you have two linear layers one followed by the other, we can make use of this
 
 So if you have a input X, weights W1 and W2 where the operations you would want to do look like $W2@W1@X$ you can essentially, split W1 as we do in column parallel and split W2 as we do row parallel. The output of WX1 = Y would already be split column wise across GPUs aka Y1 on GPU0 and Y2 on GPU1. This directly feeds into W2[0:n//2] on GPU0 and W2[n//2:n] on GPU1.
 
-So we essentially performed 2 linear layers' operation, skipped a communication phase. This becomes crucial for LLMs where it has dozens and dozens of matmul operations, or for any deep learning architecture for that matter. Sounds crazy right? Lets see how this plugs in to Transformer Inference.
+So we essentially performed 2 linear layers' operation, skipped a communication phase. This becomes crucial for LLMs where it has dozens and dozens of matmul operations, or for any deep learning architecture for that matter. Sounds crazy right? Let's see how this plugs in to Transformer Inference.
 
 ## Transformer Perspective
 

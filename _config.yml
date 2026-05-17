@@ -20,16 +20,20 @@ timezone: Asia/Calcutta
 
 title: Datta's Blog                          # the main title
 
-tagline: A place where I share my thoughts, findings and learnings
+tagline: First-principles notes on LLMs, GPU kernels, and model training
 
-description: >-                        
-  A minimal, responsive and feature-rich Jekyll Chirpy theme for technical writing.
+description: >-
+  Visual, math-backed explanations of LLM systems, attention, fine-tuning,
+  GPU kernels, and the engineering details behind modern deep learning.
 
 # fill in the protocol & hostname for your site, e.g., 'https://username.github.io'
 url: 'https://datta0.github.io'
 
 github:
   username: datta0             # change to your github username
+
+twitter:
+  username: im_datta0
 
 social:
   # Change to your full name.
@@ -46,8 +50,7 @@ social:
 author:
   name: Datta Nimmaturi
   url: https://datta0.github.io/
-
-google_site_verification: google_meta_tag_verification # change to your verification string
+  twitter: im_datta0
 
 # ↑ --------------------------
 
@@ -67,7 +70,7 @@ google_analytics:
 #     light  - Use the light color scheme
 #     dark   - Use the dark color scheme
 #
-theme_mode: 'dark'  # [light|dark]
+theme_mode:  # [light|dark]
 
 # The CDN endpoint for images.
 # Notice that once it is assigned, the CDN url
@@ -91,9 +94,6 @@ paginate: 10
 markdown: kramdown
 kramdown:
   input: GFM
-# ------------ The following options are not recommended to be modified ------------------
-
-kramdown:
   footnote_backlink: "&#8617;&#xfe0e;"
   parse_block_html: true
   syntax_highlighter: rouge

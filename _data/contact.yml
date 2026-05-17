@@ -6,6 +6,14 @@
 - type: twitter
   icon: "fa-brands fa-x-twitter"
 
+- type: linkedin
+  icon: "fab fa-linkedin"
+  url: "https://www.linkedin.com/in/datta0"
+
+- type: substack
+  icon: "fas fa-newspaper"
+  url: "https://datta0.substack.com"
+
 - type: email
   icon: "fas fa-envelope"
   noblank: true # open link in current tab

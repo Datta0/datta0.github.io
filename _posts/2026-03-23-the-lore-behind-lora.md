@@ -3,8 +3,8 @@ title: The lore behind LoRA
 description: LoRA imagined from the ground up
 author: datta0
 date: 2026-03-23T14:30:00+05:30
-categories: [LoRA, Transformer, Training, Finetuning, Math]
-tags: [LoRA, Transformer, Training, Finetuning, Math]
+categories: [LoRA, Transformer, Training, Fine-tuning, Math]
+tags: [LoRA, Transformer, Training, Fine-tuning, Math]
 render_with_liquid: false
 math: true
 image:
@@ -15,11 +15,15 @@ image:
 
 ## Introduction
 
+**Prerequisites:** basic transformer layers, gradient descent, and why full fine-tuning stores gradients and optimizer state for trainable weights.
+
+**What you'll get:** the motivation for LoRA, why its low-rank update can start from a no-op, and how the memory savings show up during training.
+
 Previously we have talked about [Transformer and attention being re-imagined](https://datta0.github.io/posts/transformer-imagined/) from the first principles. We've motivated the need for attention, MLP, MoE and how they work in theory. But so far we've only talked about how these work in theory. But for the said components to work in ideal way, we need to train the model. Today we try to understand how to *efficiently* (we will explain this in a while) do that.
 
 ## A brief about standard training
 
-So when training LLMs, assuming that we have data of `seq_len` tokens, each data sample gives us `seq_len-1` training examples all in one, namely, the subsequence of tokens starting from position `0` to `i` for all `i` from `0` to `seq_len-2` as the input and the token at position `i+1` as the target. All this is done in a single pass through the language model. Once a token is predicted, we calculate the Cross Entropy Loss and backpropagate the gradients through the entire model. I'm intentionally cutting the explanation short here about the training process and the reason behind all these. If you are interested, I might write another going into few more details about standard LLM training. But for now, lets move on to the main topic.
+So when training LLMs, assuming that we have data of `seq_len` tokens, each data sample gives us `seq_len-1` training examples all in one, namely, the subsequence of tokens starting from position `0` to `i` for all `i` from `0` to `seq_len-2` as the input and the token at position `i+1` as the target. All this is done in a single pass through the language model. Once a token is predicted, we calculate the Cross Entropy Loss and backpropagate the gradients through the entire model. I'm intentionally cutting the explanation short here about the training process and the reason behind all these. If you are interested, I might write another going into few more details about standard LLM training. But for now, let's move on to the main topic.
 
 ### Everything that touches the GPU
 
@@ -85,11 +89,11 @@ In practice, these are called `adapters`.
 ![LoRA Visualised](assets/img/blogs/lora_lore/lora_blocks.jpg)
 _LoRA visualised_
 
-Now we need to define how the matrices are initialised right? Right initialisation can go a long way. [I have previously experimented with different initialisation strategies](https://datta0.github.io/posts/rethink-lora-init/). But for now, lets stick to the basics.
+Now we need to define how the matrices are initialised right? Right initialisation can go a long way. [I have previously experimented with different initialisation strategies](https://datta0.github.io/posts/rethink-lora-init/). But for now, let's stick to the basics.
 
 What do we want from LoRA? At the worst, it should not disturb the base model. So we want the initialisation to be such that it doesn't affect the compute to begin with (until it is trained). 
 
-So we want $(W + \Delta W_{init}) \cdot X = W \cdot X$ aka $A_{init} \cdot B_{init} \cdot X = 0^{m \times n}$. This should happen irrespective of what the input $X$ is. So the only way to make this is happen is to initialisae to that $A_{init} \cdot B_{init} = 0^{m \times n}$. In practice, as you see below, one of the matrices (generally B) is initialised to all zeros while the other can pick any initialisation. This might be tingling your spidey senses that all zeros is advised against in deep learning in general. But here the presence of $W$ avoids the *said* issue. People have tried alternative initialisations to avoid all zero init. But this is still the standard.
+So we want $(W + \Delta W_{init}) \cdot X = W \cdot X$ aka $A_{init} \cdot B_{init} \cdot X = 0^{m \times n}$. This should happen irrespective of what the input $X$ is. So the only way to make this happen is to initialise such that $A_{init} \cdot B_{init} = 0^{m \times n}$. In practice, as you see below, one of the matrices (generally B) is initialised to all zeros while the other can pick any initialisation. This might be tingling your spidey senses that all zeros is advised against in deep learning in general. But here the presence of $W$ avoids the *said* issue. People have tried alternative initialisations to avoid all zero init. But this is still the standard.
 
 ### Implementation
 

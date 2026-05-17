@@ -6,7 +6,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta
     name="viewport"
-    content="width=device-width, user-scalable=no initial-scale=1, shrink-to-fit=no, viewport-fit=cover"
+    content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover"
   >
 
   {%- capture seo_tags -%}
@@ -88,10 +88,6 @@
     <link rel="stylesheet" href="{{ site.data.origin[type].toc.css | relative_url }}">
   {% endif %}
 
-  {% if page.layout == 'post' or page.layout == 'page' or page.layout == 'home' %}
-    <link rel="stylesheet" href="{{ site.data.origin[type]['lazy-polyfill'].css | relative_url }}">
-  {% endif %}
-
   {% if page.layout == 'page' or page.layout == 'post' %}
     <!-- Image Popup -->
     <link rel="stylesheet" href="{{ site.data.origin[type].glightbox.css | relative_url }}">
@@ -112,18 +108,10 @@
       ></script>
     {% endif %}
 
-    <!-- Web Analytics -->
-    <!-- {% for analytics in site.analytics %}
-      {% capture str %}{{ analytics }}{% endcapture %}
-      {% assign platform = str | split: '{' | first %}
-      {% if site.analytics[platform].id and site.analytics[platform].id != empty %}
-        {% include analytics/{{ platform }}.html %}
-      {% endif %}
-    {% endfor %} -->
+    {% if site.google_analytics.id %}
+      {% include analytics/google.html %}
+    {% endif %}
   {% endif %}
-
-  <!-- Always enable google analytics czynot-->
-  {% include analytics/google.html %}
 
   {% include metadata-hook.html %}
 </head>
