@@ -47,17 +47,18 @@ refactor: true
   {% endfor %}
 {% endif %}
 
-<section class="home-intro mb-4 pb-2 px-xl-1">
-  <h1 class="mb-2">First-principles notes on LLM systems</h1>
-  <p class="lead mb-3">
-    I write visual, math-backed explanations of attention, fine-tuning, GPU kernels, and the engineering details
-    behind modern deep learning systems.
+<section class="home-intro px-xl-1">
+  <h1>Notes on LLM systems</h1>
+  <p>
+    First-principles explanations of attention, fine-tuning, GPU kernels, and the engineering details behind
+    modern deep learning systems.
   </p>
-  <div class="d-flex flex-wrap gap-2">
-    <a class="post-tag btn btn-outline-primary" href="{{ '/posts/flash-attention/' | relative_url }}">Start with FlashAttention</a>
-    <a class="post-tag btn btn-outline-primary" href="{{ '/posts/transformer-imagined/' | relative_url }}">Transformer basics</a>
-    <a class="post-tag btn btn-outline-primary" href="{{ '/posts/understanding-multi-gpu-parallelism-paradigms/' | relative_url }}">GPU parallelism</a>
-  </div>
+  <nav class="home-intro-links d-flex flex-wrap gap-2" aria-label="Featured posts">
+    <a href="{{ '/posts/transformer-imagined/' | relative_url }}">Transformer basics</a>
+    <a href="{{ '/posts/flash-attention/' | relative_url }}">Flash Attention</a>
+    <a href="{{ '/posts/understanding-multi-gpu-parallelism-paradigms/' | relative_url }}">GPU parallelism</a>
+    <a href="{{ '/posts/the-lore-behind-lora/' | relative_url }}">LoRA</a>
+  </nav>
 </section>
 
 <div id="post-list" class="flex-grow-1 px-xl-1">

@@ -157,8 +157,14 @@
     {% endif %}
 
     <!-- lazy-load images -->
+    {% unless _left contains 'decoding=' %}
+      {% assign _left = _left | append: ' decoding="async"' %}
+    {% endunless %}
+
     {% if _lazyload %}
-      {% assign _left = _left | append: ' loading="lazy"' %}
+      {% unless _left contains 'loading=' %}
+        {% assign _left = _left | append: ' loading="lazy"' %}
+      {% endunless %}
     {% endif %}
 
     {% if page.layout == 'home' %}

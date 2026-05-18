@@ -1,12 +1,24 @@
-<script async src="https://www.googletagmanager.com/gtag/js?id={{ site.google_analytics.id }}"></script>
 <script>
-  document.addEventListener('DOMContentLoaded', () => {
-    window.dataLayer = window.dataLayer || [];
-    function gtag() {
-      dataLayer.push(arguments);
-    }
+  window.dataLayer = window.dataLayer || [];
+  function gtag() {
+    dataLayer.push(arguments);
+  }
 
-    gtag('js', new Date());
-    gtag('config', '{{ site.google_analytics.id }}');
+  gtag('js', new Date());
+  gtag('config', '{{ site.google_analytics.id }}');
+
+  window.addEventListener('load', () => {
+    const loadAnalytics = () => {
+      const script = document.createElement('script');
+      script.async = true;
+      script.src = 'https://www.googletagmanager.com/gtag/js?id={{ site.google_analytics.id }}';
+      document.head.appendChild(script);
+    };
+
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(loadAnalytics, { timeout: 2500 });
+    } else {
+      setTimeout(loadAnalytics, 1500);
+    }
   });
 </script>
