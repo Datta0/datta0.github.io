@@ -683,3 +683,16 @@ In case of non-verifiable rewards, for example helpfulness and harmlessness, you
 ## Final thoughts
 
 Reinforcement learning has been the go-to for surpassing human-level performance on games, and it is now a major ingredient in tasks like math and coding. It comes in different flavors and you're free to pick whatever you like. But the key is to test the waters before diving deep in. We have exclusively delved into the math and the intuition behind the formulations today, but in the future we'll go over the systems side of it. Given the insane amount of memory required for maintaining all those copies and the different components at play like trainer, inference engine etc, it becomes a very big task to manage the systems and make sure that they are in sync. It's going to be another exciting blog, so stay tuned. Until then, happy brainstorming!
+
+## References
+
+- [AlphaZero: Mastering Chess and Shogi by Self-Play with a General Reinforcement Learning Algorithm](https://arxiv.org/abs/1712.01815)
+- [OpenAI: Emergent Tool Use from Multi-Agent Interaction](https://openai.com/index/emergent-tool-use/)
+- [Proximal Policy Optimization Algorithms](https://arxiv.org/abs/1707.06347)
+- [Hugging Face Deep RL Course: Visualize the Clipped Surrogate Objective Function](https://huggingface.co/learn/deep-rl-course/unit8/visualize)
+- [Training Language Models to Follow Instructions with Human Feedback](https://arxiv.org/abs/2203.02155)
+- [Direct Preference Optimization: Your Language Model is Secretly a Reward Model](https://arxiv.org/abs/2305.18290)
+- [DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models](https://arxiv.org/abs/2402.03300)
+- [DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning](https://arxiv.org/abs/2501.12948)
+- [Understanding R1-Zero-Like Training: A Critical Perspective](https://arxiv.org/abs/2503.20783)
+- [State of RL for Reasoning LLMs](https://aweers.de/blog/2026/rl-for-llms/)
