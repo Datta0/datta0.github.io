@@ -8,176 +8,678 @@ tags: [LLM, Fine-tuning, RL, GRPO, PPO, Math]
 render_with_liquid: false
 math: true
 image:
-  path: /assets/img/blogs/flash_attn_intro/flash_attn_header_preview.jpg
-  alt: The magic behind FlashAttention
+  path: /assets/img/blogs/rl_for_llm/rl_for_llm_header_wide.jpg
+  alt: Reinforcement learning collage showing rewards, actions, and exploration
   no_bg: true
 ---
 
 ## Introduction
 
-LLMs have come a long way in the last few years. We've had LLMs writing poems and short essays to now solving open math research problems. But they started as stochastic parraots right? Regurgitating whatever they have read on the internet without any originality. How did we get them to make such a tremendous leap? Lets find out.
+LLMs have come a long way in the last few years. We've gone from LLMs writing poems and short essays to seeing them solve hard math and coding problems. But they started as stochastic parrots, right? Regurgitating whatever they had read on the internet without any originality. How did we get them to make such a tremendous leap? Let's find out. [TLDR at the end](#tldr).
 
-## Supervised fine TUNING
+## Supervised Fine-Tuning
 
-If you have a model that can understand the data at a scale as large as the internet and predict it reliably, then it is safe to assume that it has learnt language and some basic knowledge of the world. Such a model only needs to be shown the ways of being a helpful assistant to be able to respond to our queries in a helpful manner. This is usually what SFT does. You teach the model to respond in certain formats, with certain traits. Typically the initial training on the internet corpus data is referred to as PreTraining. The idea there is to let the model predict the next word and that is what the loss optimises for too. We call the loss Cross Entropy Loss.
+If you have a model that can understand internet-scale data and predict it reliably, then it is safe to assume that it has learned language and some basic knowledge of the world. Such a model only needs to be shown the ways of being a helpful assistant to be able to respond to our queries well. This is usually what SFT does. You teach the model to respond in certain formats, with certain traits. Typically the initial training on the internet corpus data is referred to as pretraining. The idea there is to let the model predict the next token, and that is what the loss optimizes for too. We call the loss cross-entropy loss.
 
 $$
-\mathcal{L} = -\sum_{i=1}^{N} y_i \log(\hat{y}_i) \quad \text{where } y_i \text{ is the true label and } \hat{y}_i \text{ is the predicted label}
+\mathcal{L} = -\sum_{i=1}^{N} y_i \log(\hat{y}_i)
 $$
+
+Here $y_i$ is the true label distribution and $\hat{y}_i$ is the predicted probability distribution.
 
 ### So what's the problem?
-Well the problem is, even with SFT, you're still telling the model exactly what to say. I'd say this is like **Imitation**. And for everything you want to teach the model, you need a explicit examples of what to do in what case. So data gathering is a big requirement as well. High quality datasets at large scale is not easy to come by. Even then you might miss the niche cases, that you didn't have examples for aka the Tail of the distribution (whatever that means). For example, you might have a looot of python code in the dataset but the model might still struggle to write good pytorch code.
+Well, the problem is, even with SFT, you're still teaching the model by showing it example answers. I'd say this is like **Imitation**. And for everything you want to teach the model, you need explicit examples of what to do in each case. So data gathering is a big requirement as well. High-quality datasets at large scale are not easy to come by. Even then you might miss the niche cases that you didn't have examples for, aka the tail of the distribution (whatever that means). For example, you might have a lot of Python code in the dataset but the model might still struggle to write good PyTorch code.
 
-## Reinforcement LEARNING
+## Reinforcement Learning
 
-So to teach a kid to play chess, you can tell them to do move XYZ in ABC situation. But that is not going to help them in real games and any deviation from the studied theory, they are vulnerable. Sure they might be able to pattern match and understand a few more scenarios than what you explicitly taught them. But beyond that, the scope for discovering novel and unique strategies is limited. The real learning and improvement happens only when they play the game, do good or bad, know the outcome, correct themselves and do this on repeat. I'd go as far to say that real learning happens at the boundaries of current knowledge and skill. The "play the game" part is taking "actions" on the "environment" of chess board at different points of the game called "states", to "do good or bad" and "win/lose" is the reward. This is pretty much how every reinforcement learning setup is structured.
+So to teach a kid to play chess, you can tell them to do move XYZ in situation ABC. But that is not enough for real games, because any deviation from studied theory makes them vulnerable. Sure, they might be able to pattern match and understand a few more scenarios than what you explicitly taught them. But beyond that, the scope for discovering novel and unique strategies is limited. The real learning and improvement happens when they play the game, do well or poorly, see the outcome, correct themselves, and repeat this loop. I'd go as far as to say that real learning happens at the boundaries of current knowledge and skill. The "play the game" part is taking "actions" in the "environment" of the chess board at different points of the game called "states". The "do well or poorly" and "win/lose" part is the reward. This is pretty much how every reinforcement learning setup is structured.
 
  - **Agent**: The learner (in our case, the LLM)
- - **Environment**: Where your actions are applied to. For LLMs, it is the task at hand (e.g. coding, math, game play etc.). This can also be a collection of tasks and environments.
+ - **Environment**: Where your actions are applied. For LLMs, it is the task at hand (e.g. coding, math, gameplay, etc.). This can also be a collection of tasks and environments.
  - **State**: The current position on the board (or the current context in the task)
  - **Action**: The move made by the agent (or the response generated by the LLM)
  - **Reward**: The outcome of the action (win/lose or the quality of the response)
  - **Policy**: The strategy the agent uses to make decisions (or the LLM's generation strategy)
- - **Value Function**: The expected return of being in a particular state (or the expected quality of a response). Only depends on the state. Denoted as $V(s)$
+ - **Value Function**: The expected return of being in a particular state (or the expected quality from the current context). Only depends on the state. Denoted as $V(s)$
  - **Q-Function**: The expected return of taking a particular action in a particular state (or the expected quality of a response given a context). Denoted as $Q(s, a)$
 
-Now that you have the task at hand setup, you need to define the optimization criteria. You want to let the model move towards policies that give higher returns. Because we are doing gradient descent, we would like to formulate a loss that can capture this exact thing. 
+Now that you have the task at hand set up, you need to define the optimization criteria. You want to let the model move towards policies that give higher returns. Because we are doing gradient descent, we would like to formulate a loss that can capture this exact thing.
 
 $$
-\max_{\pi} \mathbb{J}(\pi) = \mathbb{E_{\pi}}[R_t] \\
-\text{note that } R_t \text{ can be any function of the observed reward} \\
-\text{eg: } R_t = r_t, \\
-\text{ or } R_t = \sum_{t'=t}^T r_{t'} \quad \text{sum of all future rewards} \\
-\text{ or } R_t = \sum_{t'=t}^T \gamma^{t'-t} r_{t'} \quad \text{discount future rewards}
+\begin{aligned}
+\max_{\pi} \mathbb{J}(\pi) &= \mathbb{E}_{\pi}[R_t] \\
+R_t &= r_t \\
+R_t &= \sum_{t'=t}^{T} r_{t'} \\
+R_t &= \sum_{t'=t}^{T} \gamma^{t'-t} r_{t'}
+\end{aligned}
 $$
 
-One thing to notice here is that we only do accumulation of future rewards because we want to evaluate a state. Not the trajectory. Once we have an idea of each state, at inference time we pick the action(s) that land us in better/best states. If we were to include past rewards as well, a good state/action in the past which leads to a loss would be favoured more than a bad state/action which leads to a win. We do not want that.
+One thing to notice here is that the return from time $t$ only accumulates rewards from $t$ onward. That is because we want to evaluate the value of being in the current state, or taking the current action, given what happens after it. Past rewards already happened and should not change how good this current decision is. If we included past rewards too, a bad action that follows a great opening could look better than a good recovery action that follows a bad opening. We do not want that.
 
-You can go about achieving this in multiple ways. You can either improve the policy to predict best actions. Or you can fix the policy to be greedy and improve the Q function to predict the expected return for each state-action pair and then choose an action from those that maximize the Q value. Though this approach can lead to small issue.
+You can go about achieving this in multiple ways. You can either improve the policy to predict the best actions directly, or you can learn a Q-function that predicts the expected return for each state-action pair and then choose actions that maximize the Q value. Though this approach can lead to a small issue.
 
-If a chess agent is only trained on near-optimal sequences of moves, it only ever reaches states that are advantageous and never learns how to handle disadvantageous positions or recover from them, also it might not be able to predict the best move in an amateur game.
+If a chess agent only sees near-optimal sequences of moves, it mostly reaches advantageous states and never learns how to handle disadvantageous positions or recover from them. It also might not be able to predict the best move in an amateur game.
 
-One has to remember that any action/state you do not visit, you have no understanding about. So even if its not the most optimal state, you might want to visit them every now and then. You can also explore variants like epsilon greedy where you randomly explore with a small probability the non max reward action. The fine balance between exploration and exploitation is a key challenge in RL. 
+One has to remember that any action/state you do not visit, you have no understanding about. So even if it is not the most optimal state, you might want to visit it every now and then. You can also explore variants like epsilon-greedy, where you randomly explore with a small probability instead of always choosing the max-reward action. The fine balance between exploration and exploitation is a key challenge in RL.
 
-Another way to go about this is to improve the policy so that it directly predicts the best action(s). This is often called as Policy Gradient methods as we "improve" or "gradient ascent/descent" on the policy. There need not be any explicit Value function or Q function here. Policy internalises everything.
+Another way to go about this is to improve the policy so that it directly predicts the best action(s). These are often called policy-gradient methods because we improve the policy directly with gradient ascent/descent. There need not be any explicit value function or Q-function here, though in practice many policy-gradient methods still use a value baseline to reduce variance.
 
+### Why Reinforcement Learning over Supervised Fine-Tuning?
 
-### REINFORCE
-This is pretty much the foundation of modern Reinforcement Learning algorithms and one among the earliest Policy Gradient methods. In the simplest form, the formulation is to maximise sum of all rewards. So the objective is to 
-$$
-\max_{\pi} \mathbb{J}(\pi) = \mathbb{E_{x \in D, y \sim \pi_{\theta}(.|x)}}[R(x,y)]
-$$
+Well, let's look at history so that the RL fanboy in me doesn't give you a biased opinion. DeepMind's game-playing systems made this contrast very visible. Earlier AlphaGo systems used supervised learning to imitate expert human Go moves and then improved with reinforcement learning. AlphaGo Zero and AlphaZero pushed this further: they learned from self-play with no human game data, and AlphaZero reached superhuman play in chess, shogi, and Go. I rest my case.
 
-Because we perform gradient descent as the optimisation mechanism, we formulate this as a minimisation problem of the negative of the above. 
+![RL vs SFT on Go](assets/img/blogs/rl_for_llm/alpha_go_rl.jpg)
+_RL vs SFT on Go_
 
-$$
-\min_{\pi} -\mathbb{J}(\pi) = -\mathbb{E_{x \in D, y \sim \pi_{\theta}(.|x)}}[R(x,y)]
-$$
+### Caution is Advised
+When OpenAI trained agents to play hide-and-seek in an environment with some movable objects, they found some cool emergent behavior. The reward specification and environment robustness are of utmost importance when it comes to RL. Slight slip-ups can lead to unforeseen consequences.
 
-But for that to happen, we need to be able to define what the gradient is. The reward is anyway given by the environment and `y` is just sample rollout from the policy. You might think "why not take the derivative of the expectation". You are right in thinking that. Lets look at the math first.
+<p><strong>1. Hiders construct shelters</strong></p>
 
-$$
-\nabla_{\theta} \mathbb{J}(\pi_{\theta}) = \nabla_{\theta} \mathbb{E_{x \in D, y \sim \pi_{\theta}(.|x)}}[R(x,y)] \\
- = \nabla_{\theta} \mathbb{ \sum_{x \in D} \sum_{i=1}^{n} P_{\pi_{\theta}}(y_i | x_i, \theta) [R(x,y)]} \\
- = \mathbb{ \sum_{x \in D} \sum_{i=1}^{n}  \nabla_{\theta}  P_{\pi_{\theta}}(y_i | x_i, \theta) [R(x,y)]} \\
-$$
+<video class="embed-video file" controls preload="metadata" loop muted playsinline>
+  <source src="/assets/video/rl_for_llms/hide_and_seek_shelter_construction_no_audio.mp4" type="video/mp4">
+</video>
 
-The problem here is if we choose to take the derivative of the probability distribution, we end up with a complex expression that is hard to compute. We would also lose the ability to represent this as an expectation. The moment we formulate it as expectation, we can use the samples to estimate the gradient. So the question becomes, how do we have the gradient operation while also having a $ \mathbb{P}(y|x)$ in the expression?
+<p><strong>2. Seekers learn box surfing. Here the agent is exploiting the loophope in the environment</strong></p>
 
-#### The log trick
-Remember $\frac{d}{dx} \log x = \frac{1}{x} \implies dx = x * d \log x $? Because derivative of log spits out (inverse of) the original function, we can use this to our advantage. So we have 
+<video class="embed-video file" controls preload="metadata" loop muted playsinline>
+  <source src="/assets/video/rl_for_llms/hide_and_seek_box_surfing_no_audio.mp4" type="video/mp4">
+</video>
 
-$$
-\nabla \log P_{\pi_{\theta}}(y|x) = \frac{1}{P_{\pi_{\theta}}(y|x)} \nabla P_{\pi_{\theta}}(y|x)
-$$
+<p><strong>3. Hiders lock objects (in game ability, intentional)</strong></p>
 
-which means 
-$$
-\nabla P_{\pi_{\theta}}(y|x) = P_{\pi_{\theta}}(y|x) \nabla \log P_{\pi_{\theta}}(y|x)
-$$
+<video class="embed-video file" controls preload="metadata" loop muted playsinline>
+  <source src="/assets/video/rl_for_llms/hide_and_seek_object_locking_no_audio.mp4" type="video/mp4">
+</video>
 
-Substituting this back into our original expression, we get 
-$$
-\nabla_{\theta} \mathbb{J}(\pi_{\theta}) = \mathbb{ \sum_{x \in D} \sum_{i=1}^{n}  P_{\pi_{\theta}}(y_i | x_i, \theta) \nabla \log P_{\pi_{\theta}}(y_i | x_i, \theta) [R(x,y)]} \\
-$$
-
-Now we have probability term inside, multiplied by a function/expression and a summation wrapping the entire thing. The classic `Expectation` formulation almost akin to which we started with. So we can write this as 
+## REINFORCE
+This is pretty much the foundation of many modern policy-gradient algorithms and one among the earliest policy-gradient methods. In the simplest form, the formulation is to maximize the expected reward. So the objective is to
 
 $$
-\nabla_{\theta} \mathbb{J}(\pi_{\theta}) = \mathbb{E_{x \in D, y \sim \pi_{\theta}(.|x)}}[\nabla \log P_{\pi_{\theta}}(y|x) R(x,y)]
+\max_{\pi} \mathbb{J}(\pi)
+= \mathbb{E}_{x \in D,\, y \sim \pi_{\theta}(\cdot|x)}[R(x,y)]
 $$
- 
-All great. But one thing to consider is, if the agent is already in a good state (almost winning chess game), any action would lead to positive reward. So the gradient would be positive for all actions, and the policy would not change. This is not ideal. So what we generally do is subtract a baseline from the reward. This baseline is usually the average reward across all actions like a proxy for how good a state is. This helps in reducing the variance of the gradient estimate. The formulation now becomes... It is very important that the baseline doesn't depend on the rollouts. It can depend on $x$ but not on $\theta$.
+
+Because we perform gradient descent as the optimization mechanism, we formulate this as a minimization problem of the negative of the above.
 
 $$
-\nabla_{\theta} \mathbb{J}(\pi_{\theta}) = \mathbb{E_{x \in D, y \sim \pi_{\theta}(.|x)}}[\nabla \log P_{\pi_{\theta}}(y|x) \cdot (R(x,y) - b(x))]
+\min_{\pi} -\mathbb{J}(\pi)
+= -\mathbb{E}_{x \in D,\, y \sim \pi_{\theta}(\cdot|x)}[R(x,y)]
+$$
+
+But for that to happen, we need to be able to define what the gradient is. The reward is given by the environment and `y` is just a sampled rollout from the policy. You might think, "why not take the derivative of the expectation?" You are right in thinking that. Let's look at the math first.
+
+$$
+\begin{aligned}
+\nabla_{\theta} \mathbb{J}(\pi_{\theta})
+&= \nabla_{\theta}
+   \mathbb{E}_{x \in D,\, y \sim \pi_{\theta}(\cdot|x)}[R(x,y)] \\
+&= \nabla_{\theta}
+   \sum_{x \in D}\sum_y
+   \pi_{\theta}(y | x) R(x,y) \\
+&= \sum_{x \in D}\sum_y
+   \nabla_{\theta}\pi_{\theta}(y | x) R(x,y)
+\end{aligned}
+$$
+
+The problem here is if we choose to take the derivative of the probability distribution, we end up with a complex expression that is hard to compute. We would also lose the ability to represent this as an expectation. The moment we formulate it as expectation, we can use the samples to estimate the gradient. So the question becomes, how do we have the gradient operation while also having a $\mathbb{P}(y \mid x)$ in the expression?
+
+### The log trick
+Remember $\frac{d}{dx} \log x = \frac{1}{x}$? Because the derivative of log gives us the inverse of the original function, we can use this to our advantage. So we have
+
+$$
+\nabla \log \pi_{\theta}(y|x) = \frac{1}{\pi_{\theta}(y|x)} \nabla \pi_{\theta}(y|x)
+$$
+
+which means
+
+$$
+\nabla \pi_{\theta}(y|x) = \pi_{\theta}(y|x) \nabla \log \pi_{\theta}(y|x)
+$$
+
+Substituting this back into our original expression, we get
+
+$$
+\nabla_{\theta} \mathbb{J}(\pi_{\theta})
+= \sum_{x \in D}\sum_y
+\pi_{\theta}(y | x)
+\nabla \log \pi_{\theta}(y | x)
+R(x,y)
+$$
+
+Now we have a probability term inside, multiplied by a function/expression and a summation wrapping the entire thing. That is the classic `Expectation` formulation, almost akin to what we started with. So we can write this as
+
+$$
+\nabla_{\theta} \mathbb{J}(\pi_{\theta})
+= \mathbb{E}_{x \in D,\, y \sim \pi_{\theta}(\cdot|x)}
+\left[\nabla \log \pi_{\theta}(y|x) R(x,y)\right]
+$$
+
+All great. But one thing to consider is, if the agent is already in a good state (almost winning a chess game), many actions might lead to positive reward. Without a baseline, all sampled actions can get reinforced just because the state was already good. This is noisy and not ideal. So what we generally do is subtract a baseline from the reward. This baseline is usually a proxy for how good the state is before choosing the action. This helps reduce the variance of the gradient estimate. The formulation now becomes... It is very important that the baseline does not depend on the sampled action $y$. It can depend on $x$; if it is learned, its parameters are usually handled separately from the policy-gradient term.
+
+$$
+\nabla_{\theta} \mathbb{J}(\pi_{\theta})
+= \mathbb{E}_{x \in D,\, y \sim \pi_{\theta}(\cdot|x)}
+\left[
+\nabla \log \pi_{\theta}(y|x)(R(x,y) - b(x))
+\right]
 $$
 
 where $b(x)$ is the baseline.
 
 
-### PPO
-This is the OG of the Reinforcement Learning algorithms. This is pretty much some more mathematical adjustments on top of REINFORCE. The baseline subtracted reward is typically called Advantage here. In the initial days of LLMs, especially GPT 3, there was a need for a way to train the models to be helpful, friendly etc. All the qualities that are easier to judge and harder to quantify mathematically. So one way was to use Reinforcement Learning where helpful and friendly responses would get higher rewards (ofcourse assuming that it is correct). But unlike Pretraining or supervised fine-tuning, this involves generation. Generation of a 1000 new tokens takes 1000 forward passes through the model where as in Pretraining/SFT, 1000 token sample would just be single forward pass. 
+## PPO
+This is one of the workhorse reinforcement learning algorithms used in RLHF. It is pretty much some more mathematical adjustments on top of REINFORCE. The baseline-subtracted reward is typically called the advantage here. In the initial days of LLMs, especially around GPT-3 and InstructGPT, there was a need for a way to train models to be helpful, truthful, harmless, etc. All the qualities that are easier to judge and harder to quantify mathematically. So one way was to use reinforcement learning where helpful and correct responses would get higher rewards. But unlike pretraining or supervised fine-tuning, this involves generation. Generating 1000 new tokens takes 1000 autoregressive decoding steps, whereas in pretraining/SFT a 1000-token sample can be trained with a single teacher-forced forward pass.
 
-So to make it more efficient, we want to be able to do multiple fowrard passes and thus gradient updates on single rollout. Though we have to make sure that the policy (weights) that generated the rollout aren't too far off from the current policy (weights) which we are doing gradient updates on. For first step, this is exact same (ignoring trainer-inference mismatch which is a separate problem). But if we want to do say 4 steps, the policy would have changed by 2nd step and the mismatch needs to be mathematically addressed. 
+So to make it more efficient, we want to be able to do multiple forward passes and thus multiple gradient updates on a single rollout batch. Though we have to make sure that the policy (weights) that generated the rollout is not too far off from the current policy (weights) that we are doing gradient updates on. For the first step, this is exactly the same policy (ignoring trainer-inference mismatch, which is a separate problem). But if we want to do, say, 4 steps, the policy would have changed by the 2nd step and the mismatch needs to be mathematically addressed.
 
-In case of mismatch, the expectation (which is over generations $y$) is over $ \theta_{old}$ but the logprobs and gradient are computed using $\theta_{new}$. 
+In case of mismatch, the expectation (which is over generations $y$) is over $\theta_{old}$, but the logprobs and gradient are computed using the current $\theta$.
 
-#### The importance sampling correction
+### The importance sampling correction
 Consider a probability distribution P for which you want to calculate the expectation over. But you unfortunately do not have access to samples from P. Instead you can sample from another distribution Q over the same input space. How would one calculate that?
 
 $$
-\mathbb{E}_P[f(x)] = \sum_x P(x) f(x) = \sum_x \frac{P(x)}{Q(x)} Q(x) f(x) = \mathbb{E}_Q\left[\frac{P(x)}{Q(x)} f(x)\right]
+\begin{aligned}
+\mathbb{E}_P[f(x)]
+&= \sum_x P(x) f(x) \\
+&= \sum_x \frac{P(x)}{Q(x)} Q(x) f(x) \\
+&= \mathbb{E}_Q\left[\frac{P(x)}{Q(x)} f(x)\right]
+\end{aligned}
 $$
 
-So here we converted an expectation over P to an expectation over Q by reweighting the samples with the ratio $\frac{P(x)}{Q(x)}$. This is exactly what we're about to do to the PPO case as well. Q is fixed distribution where we generate rollouts from. P is the distribution we're optimising and gradient updating on.
+So here we converted an expectation over P to an expectation over Q by reweighting the samples with the ratio $\frac{P(x)}{Q(x)}$. This is exactly what we're about to do to the PPO case as well. Q is the fixed distribution that generated the rollouts. P is the distribution we're optimizing and gradient updating on. We're going to explain what $A^\pi(x, y)$ is later.
 
 $$
-\nabla \mathbb{J}(\theta) = \mathbb{E}_{x \sim \mathcal{D}, y \sim \pi_\theta(\cdot|x)}\left[\nabla \log \pi_\theta(y|x) \cdot A^\pi(x, y)\right] \\
- = \mathbb{E}_{x \sim \mathcal{D}, y \sim \pi_\theta(\cdot|x)}\left[\frac{\pi_\theta(y|x)}{\pi_{\theta_{old}}(y|x)} \cdot \nabla \log \pi_\theta(y|x) \cdot A^\pi(x, y)\right]
+\begin{aligned}
+\nabla \mathbb{J}(\theta)
+&= \mathbb{E}_{x \sim \mathcal{D},\, y \sim \pi_\theta(\cdot|x)}
+   \left[\nabla \log \pi_\theta(y|x) A^\pi(x,y)\right] \\
+&= \mathbb{E}_{x \sim \mathcal{D},\, y \sim \pi_{\theta_{old}}(\cdot|x)}
+   \left[
+   \frac{\pi_\theta(y|x)}{\pi_{\theta_{old}}(y|x)}
+   \nabla \log \pi_\theta(y|x) A^\pi(x,y)
+   \right]
+\end{aligned}
 $$
 
-#### The trust region
+### The trust region
 
-One other thing when it comes to RL is, unlike SFT which is very forgiving for the choice of the setup, RL is very very finnicky. Small changes in the setup can cause drastic differences. The range is as wide as learning vs collapsing. So we need to be careful. There can be some rogue data samples or rollouts which can spoil the whole training process. Also we need to make sure noise in the environment or reward or rollouts does not mess it up. So we want to make sure the updates are "capped" so that consistent changes in similar direction will result in learning but random changes won't and noise doesn't have too much impact. This is where "Trust Region" comes in. Because the update has an importance sampling factor, which is a very good measure of how far the new policy is from the old policy, we try to clamp it to achieve that. 
+One other thing when it comes to RL is, unlike SFT which is often forgiving of setup choices, RL is very finicky. Small changes in the setup can cause drastic differences. The range is as wide as learning vs collapsing. So we need to be careful. There can be rogue data samples or rollouts which spoil the training process. Also we need to make sure noise in the environment, reward, or rollouts does not mess it up. So we want to make sure the updates are "capped" so that consistent changes in a similar direction will result in learning, but random changes and noise do not have too much impact. This is where "trust region" comes in. Because the update has an importance-sampling factor, which is a useful measure of how far the new policy is from the old policy on sampled actions, we try to clamp it to achieve that.
 
 $$
-A^{\pi}(x,y) = R(x,y) - b(x) \quad \quad \text{(Advantage function)} \\
-\rho(\theta) = \frac{\pi_\theta(y|x)}{\pi_{\theta_{old}}(y|x)} \quad \quad \text{(Importance sampling ratio)} \\
-\mathbb{J}(\theta) = \mathbb{E}_{x \sim \mathcal{D}, y \sim \pi_\theta(\cdot|x)}\left[\min(\rho(\theta) A^\pi(x, y), \text{ clip}(\rho(\theta), 1-\epsilon, 1+\epsilon) A^\pi(x, y))\right]
+\begin{aligned}
+A^{\pi}(x,y) &= R(x,y) - b(x) \\
+\rho(\theta) &= \frac{\pi_\theta(y|x)}{\pi_{\theta_{old}}(y|x)}
+\end{aligned}
 $$
 
-Note that the advantage can be both negative and positive for a given batch. So we want to look into how the trust region clipping works in both the cases. Assuming the usual $\epsilon = 0.2$, we have...
+$$
+\mathbb{J}(\theta)
+= \mathbb{E}_{x \sim \mathcal{D},\, y \sim \pi_{\theta_{old}}(\cdot|x)}
+\left[
+\min\left(
+\rho(\theta) A^\pi(x,y),
+\operatorname{clip}(\rho(\theta), 1-\epsilon, 1+\epsilon) A^\pi(x,y)
+\right)
+\right]
+$$
 
-The clipping handles four scenarios:
+Note that the advantage can be both negative and positive for a given batch. So we want to look into how the trust-region clipping works in both cases. Assuming the usual $\epsilon = 0.2$, we have...
 
-| | Not clipped | Clipped |
+The clipping handles the two signs of advantage differently:
+
+| Advantage | Not clipped | Clipped |
 |---|---|---|
-| **Positive advantage** (good answer, reinforce) | $\rho_t(\theta)\hat{A}_t$: the answer is good and has not been over-updated | $(1 + \epsilon)\hat{A}_t$: the answer is already sufficiently more likely, so the gradient is stopped |
-| **Negative advantage** (bad answer, discourage) | $\rho_t(\theta)\hat{A}_t$: the answer is bad and has not been over-updated | $(1 - \epsilon)\hat{A}_t$: the answer is already sufficiently less likely, so the gradient is stopped |
+| **Positive advantage**<br>good answer<br>reinforce | $\rho_t(\theta)\hat{A}_t$<br>answer is good<br>not over-updated yet<br>gradient can still increase probability | $(1+\epsilon)\hat{A}_t$<br>answer is already sufficiently more likely<br>gradient is stopped |
+| **Negative advantage**<br>bad answer<br>discourage | $\rho_t(\theta)\hat{A}_t$<br>answer is bad<br>not over-updated yet<br>gradient can still decrease probability | $(1-\epsilon)\hat{A}_t$<br>answer is already sufficiently less likely<br>gradient is stopped |
+
+<div id="ppo-clip-widget" style="margin: 1rem 0 1.5rem; padding: 1rem; border: 1px solid rgba(128, 128, 128, 0.35); border-radius: 8px; background: rgba(128, 128, 128, 0.08);">
+  <label for="ppo-epsilon" style="display: block; margin-bottom: 0.5rem;">
+    epsilon = <span id="ppo-epsilon-value">0.20</span>
+  </label>
+  <input id="ppo-epsilon" type="range" min="0.05" max="0.50" step="0.01" value="0.20" style="width: 100%; max-width: 420px;">
+  <canvas id="ppo-clip-canvas" style="display: block; width: 100%; height: auto; margin-top: 1rem;"></canvas>
+  <p style="margin: 0.75rem 0 0; font-size: 0.9rem;">The plot shows $\min(\rho A, \operatorname{clip}(\rho, 1-\epsilon, 1+\epsilon)A)$ for $A=1$ and $A=-1$. The shaded band is the trust region.</p>
+</div>
+
+<script>
+(() => {
+  const epsilonSlider = document.getElementById("ppo-epsilon");
+  const epsilonValue = document.getElementById("ppo-epsilon-value");
+  const canvas = document.getElementById("ppo-clip-canvas");
+  if (!epsilonSlider || !epsilonValue || !canvas) return;
+
+  const ctx = canvas.getContext("2d");
+  const cssWidth = 920;
+  const cssHeight = 430;
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
+  canvas.width = Math.round(cssWidth * dpr);
+  canvas.height = Math.round(cssHeight * dpr);
+  canvas.style.maxWidth = `${cssWidth}px`;
+  ctx.scale(dpr, dpr);
+
+  const rhoMin = 0.4;
+  const rhoMax = 1.6;
+
+  function drawPlot(epsilon) {
+    const x = 82;
+    const y = 92;
+    const w = 760;
+    const h = 230;
+    const yMin = -1.65;
+    const yMax = 1.65;
+    const xScale = (rho) => x + ((rho - rhoMin) / (rhoMax - rhoMin)) * w;
+    const yScale = (v) => y + h - ((v - yMin) / (yMax - yMin)) * h;
+    const clip = (rho) => Math.min(Math.max(rho, 1 - epsilon), 1 + epsilon);
+    const unclipped = (rho, advantage) => rho * advantage;
+    const clippedTerm = (rho, advantage) => clip(rho) * advantage;
+    const clippedSurrogate = (rho, advantage) => Math.min(unclipped(rho, advantage), clippedTerm(rho, advantage));
+
+    ctx.fillStyle = "#252629";
+    ctx.strokeStyle = "#3f4246";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(x - 44, y - 56, w + 88, h + 108, 8);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = "rgba(251, 188, 4, 0.12)";
+    ctx.fillRect(xScale(1 - epsilon), y, xScale(1 + epsilon) - xScale(1 - epsilon), h);
+
+    ctx.strokeStyle = "#55585f";
+    ctx.lineWidth = 1;
+    [1 - epsilon, 1, 1 + epsilon].forEach((rho, i) => {
+      ctx.setLineDash(i === 1 ? [2, 5] : [6, 5]);
+      ctx.beginPath();
+      ctx.moveTo(xScale(rho), y);
+      ctx.lineTo(xScale(rho), y + h);
+      ctx.stroke();
+    });
+    ctx.setLineDash([]);
+
+    ctx.strokeStyle = "#aeb0b4";
+    ctx.beginPath();
+    ctx.moveTo(x, y + h);
+    ctx.lineTo(x + w, y + h);
+    ctx.moveTo(x, y);
+    ctx.lineTo(x, y + h);
+    ctx.moveTo(x, yScale(0));
+    ctx.lineTo(x + w, yScale(0));
+    ctx.stroke();
+
+    function line(fn, color, dashed = false) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3;
+      ctx.setLineDash(dashed ? [8, 6] : []);
+      ctx.beginPath();
+      for (let i = 0; i <= 180; i++) {
+        const rho = rhoMin + (i / 180) * (rhoMax - rhoMin);
+        const px = xScale(rho);
+        const py = yScale(fn(rho));
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    line((rho) => unclipped(rho, 1), "#8ab4f8", true);
+    line((rho) => clippedSurrogate(rho, 1), "#8ab4f8");
+    line((rho) => unclipped(rho, -1), "#fbbc04", true);
+    line((rho) => clippedSurrogate(rho, -1), "#fbbc04");
+
+    ctx.fillStyle = "#f0f1f3";
+    ctx.font = "700 18px system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+    ctx.fillText("PPO clipped surrogate", x, y - 28);
+    ctx.fillStyle = "#c8cbd1";
+    ctx.font = "13px system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+    ctx.fillText("solid = min expression          dashed = rho * A", x, y - 8);
+    ctx.fillStyle = "#e4c66a";
+    ctx.fillText("trust region", xScale(1) - 34, y + 18);
+    ctx.fillStyle = "#c8cbd1";
+    ctx.fillText("rho", x + w / 2 - 10, y + h + 36);
+    [1 - epsilon, 1, 1 + epsilon].forEach((rho) => {
+      ctx.fillText(rho.toFixed(2), xScale(rho) - 14, y + h + 18);
+    });
+    ctx.fillText("objective", x + w + 8, yScale(0) - 8);
+  }
+
+  function draw() {
+    const epsilon = Number(epsilonSlider.value);
+    epsilonValue.textContent = epsilon.toFixed(2);
+    ctx.clearRect(0, 0, cssWidth, cssHeight);
+    ctx.fillStyle = "#1f2023";
+    ctx.fillRect(0, 0, cssWidth, cssHeight);
+    drawPlot(epsilon);
+    ctx.font = "13px system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+    ctx.strokeStyle = "#8ab4f8";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(82, 382);
+    ctx.lineTo(114, 382);
+    ctx.stroke();
+    ctx.fillStyle = "#c8cbd1";
+    ctx.fillText("positive advantage", 122, 387);
+    ctx.strokeStyle = "#fbbc04";
+    ctx.beginPath();
+    ctx.moveTo(300, 382);
+    ctx.lineTo(332, 382);
+    ctx.stroke();
+    ctx.fillText("negative advantage", 340, 387);
+    ctx.strokeStyle = "#c8cbd1";
+    ctx.setLineDash([8, 6]);
+    ctx.beginPath();
+    ctx.moveTo(535, 382);
+    ctx.lineTo(567, 382);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillText("dashed = unclipped", 575, 387);
+  }
+
+  epsilonSlider.addEventListener("input", draw);
+  draw();
+})();
+</script>
 
 This can be expressed as a mask:
+
 $$
-M(\hat{A}_t, \rho_t, \epsilon) =
+M(\hat{A}_t,\rho_t,\epsilon)
+=
 \begin{cases}
-0 & \text{if } (\hat{A}_t > 0 \land \rho_t > 1 + \epsilon) \lor (\hat{A}_t < 0 \land \rho_t < 1 - \epsilon) \\
-1 & \text{otherwise}
+0, & (\hat{A}_t > 0 \land \rho_t > 1+\epsilon) \lor (\hat{A}_t < 0 \land \rho_t < 1-\epsilon) \\
+1, & \text{otherwise}
 \end{cases}
-\\
-
-\text{so the entire equation boils down to}: \mathbb{J}(\theta) = \mathbb{E}_{x \sim \mathcal{D}, y \sim \pi_\theta(\cdot|x)}\left[M(\hat{A}_t, \rho_t, \epsilon) \cdot \rho(\theta) A^\pi(x, y)\right]
 $$
 
-Do note that when the mask is zero, the gradient too is zero. So for learning to happen, we need the samples to just be hard enough that it is reachable for the model but not too big or not too small. 
-
-#### The KL divergence penalty
-All is great so far. We formulated REINFORCE with baseline subtraction for reduced variance, added importance sampling to relieve rollout pressure and added trust region to ensure updates are not too big. But one other anchor still remains. The SFT-ed model we created already has a lot of capabilities and preferences baked into it. We do not want to stray too far from it. So we add a KL divergence penalty wrt to the same SFT model often called as the `reference model` to the loss function so that we don't drift too far off from it either.
-
-So the final loss function becomes:
+So the policy-gradient contribution can be viewed as:
 
 $$
-\mathbb{J}(\theta) = \mathbb{E}_{x \sim \mathcal{D}, y \sim \pi_\theta(\cdot|x)}\left[M(\hat{A}_t, \rho_t, \epsilon) \cdot \rho(\theta) A^\pi(x, y) - \beta \cdot \text{KL}(\pi_\theta(\cdot|x) \| \pi_{\text{ref}}(\cdot|x))\right]
+\mathbb{J}(\theta)
+= \mathbb{E}_{x \sim \mathcal{D},\, y \sim \pi_{\theta_{old}}(\cdot|x)}
+\left[
+M(\hat{A}_t,\rho_t,\epsilon)\rho(\theta)A^\pi(x,y)
+\right]
 $$
 
-where $\beta$ is the KL divergence penalty coefficient, typically small enough that KL divergence doesn't overpower environment reward but large enough to prevent catastrophic forgetting. So even while maxxing out on math and code, your model doesn't forget the art, language, knowledge and chat-assistant capabilities it had before. 
+Do note that when the mask is zero, the policy-gradient contribution from that clipped ratio is zero. So for learning to happen, we need samples to be just hard enough that improvement is reachable for the model, but not so far away that the update gets clipped all the time.
 
+### The KL divergence penalty
+All is great so far. We formulated REINFORCE with baseline subtraction for reduced variance, added importance sampling to relieve rollout pressure, and added trust-region clipping to keep updates from getting too big. But one other anchor still remains. The SFT model we created already has a lot of capabilities and preferences baked into it. We do not want to stray too far from it. So we add a KL divergence penalty with respect to the same SFT model, often called the `reference model`, so that we don't drift too far off from it either.
+
+So the final objective becomes:
+
+$$
+\begin{aligned}
+\mathbb{J}(\theta)
+= \mathbb{E}_{x \sim \mathcal{D},\, y \sim \pi_{\theta_{old}}(\cdot|x)}
+\Big[
+&M(\hat{A}_t,\rho_t,\epsilon)\rho(\theta)A^\pi(x,y)
+- \beta \,\mathrm{KL}\left(
+\pi_\theta(\cdot|x) \,\|\, \pi_{\text{ref}}(\cdot|x)
+\right)
+\Big]
+\end{aligned}
+$$
+
+where $\beta$ is the KL divergence penalty coefficient, typically small enough that KL divergence doesn't overpower the environment reward but large enough to prevent the policy from drifting too far. So even while maxing out on math and code, your model doesn't forget the language, knowledge, and chat-assistant capabilities it had before.
+
+## The LLM Setup
+
+Typically when it comes to LLMs, when it started with [InstructGPT](https://arxiv.org/pdf/2203.02155), the task was to make the model follow instructions while being helpful, truthful, and harmless. For that, the LLM is the actor, the generations are actions, and the reward model turns human preference feedback into a scalar reward.
+
+But now the question becomes how do you even get rewards here? Well, one way is to let humans score every completion the model generates, but this is not scalable. One simply can't sit and rate millions of completions that the model generates throughout the training process.
+
+### The Reward model
+
+So what is our next best bet here? Well, if models are good enough to generate text, we can train a similar model to judge which outputs humans prefer. The general trend in deep learning is that verifying something is often easier than generating it. Off topic, but this is why GANs were the early pioneers of image generation. I'll let you think about why this is being mentioned here :)
+
+Typically the LLM architecture looks as follows:
+
+```
+Generation: tokens -> embeddings -> decoder layers -->
+            lm_head: nn.Linear(model_dim, vocab_size) -> sampled token
+```
+For a reward model we have
+```
+Reward model: tokens -> embeddings -> decoder layers -->
+              reward_head: nn.Linear(model_dim, 1) -> scalar reward
+```
+
+Most of the backbone can stay the same if we were to train a reward model. The only thing we need to change is that, instead of predicting probabilities over the token space (using `lm_head`), we need to predict a scalar reward value.
+
+And once we have preference data, we can train this reward model, which is often initialized from the SFT model with `lm_head` swapped out for `reward_head`. In the chess example, if the actor model is trained to predict the "best" move, the reward model is trained to "rate/score" the move(s).
+
+But scoring completions might lead to ambiguity. One person's preference on one of the factors might overpower another person's preference on a different factor. What else can be easier and more consistent? Well, if you can't rate something, you can at least compare it against something else and pick what is better. This internalizes the concept of score. Given the noisy nature of human preferences and the discontinuity in the preference function (it is either a win=1 or a loss=0, no in-between), we turn to a probabilistic model called Bradley-Terry, which models the probability that one item is preferred over another.
+
+$$
+P(A > B) = \sigma(R_W - R_L) = \sigma (r_{\phi}(x, y_w) - r_{\phi}(x, y_l))
+$$
+
+where $\sigma$ is the sigmoid function and $R_W$ and $R_L$ are the rewards for the winning and losing items respectively. The probability of winning is higher when the reward difference is higher. Sigmoid maps the reward difference into the $(0,1)$ range. The $r_{\phi}$ term represents the reward the model predicts.
+
+The optimization criteria for the reward model therefore looks like
+
+$$
+\mathcal{L}_{reward} = -\log P(y_w > y_l | x) = -\log \sigma(r_{\phi}(x, y_w) - r_{\phi}(x, y_l))
+$$
+
+If $r_w - r_l$ is large positive: sigmoid ≈ 1, $-\log(\sigma) ≈ 0$. We're good
+
+If $r_w - r_l = 0$: sigmoid = 0.5, loss = $-\log(0.5) ≈ 0.693$
+
+If $r_w - r_l$ is negative: sigmoid < 0.5, loss is large
+
+Do note that we score the entire completion. The reward is for the entire rollout and not per token. So just like when trying to predict the next token, we forward pass the entire hidden-state tensor of shape `(seq_len, hidden_dim)` and use the final token representation. For generation, that final hidden state is multiplied by `lm_head`; for reward modeling, it is multiplied by `reward_head` to get the sequence reward. In a causal decoder, the final token can attend to the previous tokens, so it can serve as a summary position for the sequence. Read [my previous blog](https://datta0.github.io/posts/transformer-imagined/) for an in-depth understanding of the same.
+
+### The Value/Critic model
+
+Great, we tackled one problem of reward assignment. We also need to think about the "baseline" calculation given a prompt, right? After all, that is what stabilizes the training process. In the chess example, the baseline would be the evaluation of the given position. Neither scoring the move, nor predicting the move. Just evaluating the position.
+
+Well, you know the script by now. Just like reward model, when we can't scalably do it with humans, we offload it to models. Welcome to yet another model :).
+This one is again pretty similar to the reward model.
+
+```
+Critic model: tokens -> embeddings -> decoder layers -> 
+              value_head (model_dim -> 1) -> value per token
+```
+
+![The tried and tested method](assets/img/blogs/rl_for_llm/slap_a_model.jpg)
+_The tried and tested method_
+
+Now the question is whether you want KL divergence to be just an auxiliary/helper term or a primary part of the objective. In PPO-style RLHF, it is common to include the KL penalty in the reward itself, rather than as a last step to mend things. So we let the value model predict the discounted/aggregated future reward, which can also include the KL divergence penalty per token.
+
+So the optimization criteria becomes
+
+$$
+\begin{aligned}
+\mathcal{L}_{critic}
+&= \frac{1}{2}\left(\mathcal{R} - V_{\theta}(s)\right)^2 \\
+\mathcal{R}_{MC}
+&= r_t + \gamma r_{t+1} + \gamma^2 r_{t+2} + \dots \\
+\mathcal{R}_{TD}
+&= r_t + \gamma V_{\theta}(s_{t+1})
+\end{aligned}
+$$
+
+The idea is that the value of a state can be estimated in many ways. It can be Monte Carlo, where we depend on rollout rewards, or TD(k), where we use the next `k` states' values to estimate the value of the current state.
+
+### Generalized Advantage Estimation (GAE)
+
+In PPO we use something called Generalized Advantage Estimation (GAE), which is a combination of TD and Monte Carlo-style estimates. The idea is Monte Carlo is less biased but noisy because it depends on full rollouts. TD is more stable but biased because it bootstraps from a value estimate. GAE combines both by using an exponentially weighted sum of TD residuals.
+
+$$
+\begin{aligned}
+\mathcal{R} &= A^{GAE}_t + V_{\text{old}}(s_t) \\
+A^{GAE}_t &= \sum_{l=0}^{T-t}(\gamma\lambda)^l \delta_{t+l} \\
+\delta_t &= r_t + \gamma V_{\text{old}}(s_{t+1}) - V_{\text{old}}(s_t)
+\end{aligned}
+$$
+
+Notice the "old" here? These are the value predictions from the model snapshot used around rollout collection, not the value model after several PPO update steps. It is the same stale-data issue as the $\pi_{old}$ from the beginning of our PPO discussion.
+
+Because this value prediction is a per-token thing, we do not just take the last hidden state like the generation task or the reward prediction task. We take the entire `(seq_len, hidden_dim)` sized tensor and pass it through a linear layer to get a scalar value for each token. One pass per sequence, akin to pretraining of LLMs.
+
+## DPO
+
+PPO is great, but one needs to maintain a reward model and a value model. Both need their own training. If the model is so smart that it can predict the reward and also the value of a state, why not let it do the preference optimization implicitly and skip the extra models altogether? We anyway have pairwise preference data. No separate reward model, no value model. Sounds good, right? That is exactly what DPO does. The [paper itself](https://arxiv.org/abs/2305.18290) was titled "Direct Preference Optimization: **Your Language Model is Secretly a Reward Model**". But for that we need to make some small sacrifices. We drop the advantage estimate and clipping for an easier and simpler formulation.
+
+Let's start with the basic KL-regularized objective akin to REINFORCE:
+
+$$
+\begin{aligned}
+\mathcal{L}
+&= \mathbb{E}\left[
+r(x,y) - \beta \log \frac{\pi(y|x)}{\pi_{ref}(y|x)}
+\right] \\
+\mathrm{KL}(p \| q)
+&= \mathbb{E}_p\left[\log(p/q)\right] \\
+\pi^*(y|x)
+&\propto \pi_{ref}(y|x)\exp\left(\frac{1}{\beta}r(x,y)\right)
+\end{aligned}
+$$
+
+<details markdown="1" style="background-color: rgba(128, 128, 128, 0.1); padding: 15px; border-radius: 8px;">
+<summary markdown="span"><b>The derivation for those interested (click to expand)</b></summary>
+
+$$
+\begin{aligned}
+\mathcal{L}
+&= \mathbb{E}\left[
+r(x,y) - \beta \log \frac{\pi(y|x)}{\pi_{ref}(y|x)}
+\right] \\
+&= \sum_{x,y}\pi(x,y)
+\left[
+r(x,y) - \beta \log \frac{\pi(y|x)}{\pi_{ref}(y|x)}
+\right]
+\end{aligned}
+$$
+
+The constraint is:
+
+$$
+\sum_y \pi(y|x) = 1
+$$
+
+So the Lagrangian is:
+
+$$
+\mathcal{L}_{\text{lag}}
+= \sum_{x,y}\pi(x,y)
+\left[
+r(x,y) - \beta \log \frac{\pi(y|x)}{\pi_{ref}(y|x)}
+\right]
+- \lambda\left(\sum_y \pi(y|x) - 1\right)
+$$
+
+Using $\frac{d}{dp}p\log p = \log p + 1$, we get:
+
+$$
+\begin{aligned}
+\frac{d}{d\pi}\mathcal{L}_{\text{lag}}
+&= r(x,y) - \beta \log \frac{\pi(y|x)}{\pi_{ref}(y|x)}
+   - \beta - \lambda \\
+&= 0 \\
+\pi(y|x)
+&\propto \pi_{ref}(y|x)
+\exp\left(\frac{r(x,y)-\beta-\lambda}{\beta}\right)
+\end{aligned}
+$$
+
+</details>
+
+$$
+\begin{aligned}
+\pi^*(y|x)
+&\propto \pi_{ref}(y|x)\exp\left(\frac{1}{\beta}r(x,y)\right) \\
+r(x,y)
+&= \beta \log \frac{\pi^*(y|x)}{\pi_{ref}(y|x)} + C \\
+r(x,y_w) - r(x,y_l)
+&= \beta \log \frac{\pi^*(y_w|x)}{\pi_{ref}(y_w|x)}
+- \beta \log \frac{\pi^*(y_l|x)}{\pi_{ref}(y_l|x)}
+\end{aligned}
+$$
+
+What a clean, simple, and minimal formula we have arrived at. This will also change our objective function.
+
+$$
+\begin{aligned}
+\mathcal{L}_{\text{DPO}}
+&= -\log \sigma\left(r(x,y_w)-r(x,y_l)\right) \\
+&= -\log \sigma\left(
+\beta \log \frac{\pi_\theta(y_w|x)}{\pi_{ref}(y_w|x)}
+- \beta \log \frac{\pi_\theta(y_l|x)}{\pi_{ref}(y_l|x)}
+\right)
+\end{aligned}
+$$
+
+No need for a separate reward model, no critic model, and no online rollout loop during fine-tuning. A lot of compute and time saved. This has been one of the go-to methods for preference tuning over the last few years.
+
+## GRPO
+
+OK last one, I promise :).
+If you followed the AI and LLM world closely or from afar, you'd have heard DeepSeek-V3 and DeepSeek-R1 making massive waves. Some American AI-linked stocks fell sharply during that phase in early 2025. Though R1 was the model that made the biggest mainstream headlines, the seeds for this recipe were sown earlier in the [DeepSeekMath](https://arxiv.org/pdf/2402.03300) paper. What is the seed, you ask? The key to models learning to chase the IMO dream and also go on to become some of the best coding models in the world. This quiet but important reinforcement learning technique is called **Group Relative Policy Optimization (GRPO)**.
+
+So when you have pre-annotated preference data, PPO/DPO work well. But what about math and code? Verification is much easier than generation. That pretty much looks like a task made in heaven for RL. So the reward part of the setup is easy. For math, see if the answer matches the expected answer and score it accordingly. For code, run it on a test suite. You get the idea. Let's call these reward functions.
+
+But now what about value estimation? Well, this is where GRPO really shines. Instead of trying to estimate the value of each individual completion with a critic, GRPO looks at groups of completions for a given prompt and compares them relative to each other. The key insight is that you don't need a learned value model if you can use the group's rewards as a baseline.
+
+For an easy prompt, all the completions would get good reward from the functions, but when you take relative reward, that will die down to zero. There isn't much to learn when all the completions are equally good anyway. On the other hand, for a hard prompt, some completions will be much better than others and the relative reward will be high. This is where the learning happens. Mathematically:
+
+$$
+A_{\text{GRPO}}
+= \frac{
+r(x,y) - \mathbb{E}_{y' \sim \pi_{\theta}}[r(x,y')]
+}{
+\sigma_{y' \sim \pi_{\theta}}[r(x,y')]
+}
+$$
+
+The original formulation normalized the advantage by the group standard deviation to keep the scale controlled. When the group std is small, this division also amplifies small reward differences. Later work such as [Dr. GRPO](https://arxiv.org/pdf/2503.20783) argued that parts of the GRPO objective can introduce optimization bias, especially around response length, and proposed a modified objective. The larger lesson is that normalization and length scaling need care, because objective details can change the training dynamics a lot.
+
+$$
+\mathcal{L}_{\mathrm{GRPO}}(\theta)
+=
+-\mathbb{E}_{q,\{o_i\}_{i=1}^{G}}
+\left[
+\frac{1}{G}\sum_{i=1}^{G}
+\frac{1}{|o_i|}
+\sum_{t=1}^{|o_i|}
+\ell_{i,t}(\theta)
+\right]
+$$
+
+where the per-token objective is:
+
+$$
+\ell_{i,t}(\theta)
+=
+\min\left(
+\rho_{i,t}(\theta)\hat{A}_i,\,
+\operatorname{clip}\left(\rho_{i,t}(\theta),1-\epsilon,1+\epsilon\right)\hat{A}_i
+\right)
+- \beta D_{\mathrm{KL}}\left(\pi_\theta \,\|\, \pi_{\mathrm{ref}}\right)
+$$
+
+So the DeepSeek team used GRPO-style RL to train models on math and code and observed emerging behaviors like self-correction and self-critiquing, including the so-called "aha" moment in [DeepSeek-R1](https://arxiv.org/pdf/2501.12948). There were two notable variants: DeepSeek-R1-Zero, trained directly with RL from the base model, and DeepSeek-R1, which used cold-start reasoning data before RL. The latter recipe is more common now. Do note that response length going up can be both a sign of the model thinking longer and a sign of biased optimization criteria. In the loss function above, the per-completion term is divided by the length of the completion. This means for equal advantage, longer completions have lower loss than shorter ones thus biasing the training towards longer sequences. Objective choices like this can affect length behavior, which is why caution is advised when doing RL.
+
+![DeepSeek-R1 reward](assets/img/blogs/rl_for_llm/ds_r1_reward.jpg)
+_Reward achieved by DeepSeek-R1_
+
+Another advantage GRPO gives in math/code settings is that the reward functions can be deterministic and hence the rewards are very verifiable. You're not at the mercy of a learned reward model to give you the right rewards and then train the downstream task. People often call this **Reinforcement Learning from Verifiable Rewards** or **RLVR**.
+
+In case of non-verifiable rewards, for example helpfulness and harmlessness, you can fall back to training a model to predict the rewards, but the idea is you at least eliminate a critic here. That alone amounts to a decent amount of memory savings. But at that point you might want to compare it with DPO, which doesn't need a separate reward model during policy training.
+
+
+## TLDR
+- RL can go beyond SFT when the reward is clear. Learning over imitation.
+- REINFORCE is the backbone for policy-gradient methods.
+- Baseline subtraction reduces variance. KL divergence with respect to the SFT/reference model acts as an anchor. Trust-region clipping improves stability.
+- PPO is a major RLHF algorithm for LLMs, but it commonly uses an actor, reward model, value model, and reference model.
+- DPO makes the reward implicit. Only chosen-rejected preference pairs are needed. No separate reward or critic model during policy training.
+- GRPO uses group statistics as the baseline. No critic is needed. Verifiable rewards are the big deal here.
+
+
+## Final thoughts
+
+Reinforcement learning has been the go-to for surpassing human-level performance on games, and it is now a major ingredient in tasks like math and coding. It comes in different flavors and you're free to pick whatever you like. But the key is to test the waters before diving deep in. We have exclusively delved into the math and the intuition behind the formulations today, but in the future we'll go over the systems side of it. Given the insane amount of memory required for maintaining all those copies and the different components at play like trainer, inference engine etc, it becomes a very big task to manage the systems and make sure that they are in sync. It's going to be another exciting blog, so stay tuned. Until then, happy brainstorming!
