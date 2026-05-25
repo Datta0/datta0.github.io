@@ -19,7 +19,7 @@ LLMs have come a long way in the last few years. We've gone from LLMs writing po
 
 ## Supervised Fine-Tuning
 
-If you have a model that can understand internet-scale data and predict it reliably, then it is safe to assume that it has learned language and some basic knowledge of the world. This initial training is usually called **pretraining**. The model sees a lot of text and learns to predict the next token. The loss used for that is usually cross-entropy loss:
+If you have a model that can understand internet-scale data and predict it reliably, then it is safe to assume that it has learned language and some basic knowledge of the world. This initial training is usually called **pretraining**. The model sees a lot of text and learns to predict the next token. The loss doing the heavy lifting here is usually cross-entropy loss:
 
 $$
 \mathcal{L} = -\sum_{i=1}^{N} y_i \log(\hat{y}_i)
@@ -27,10 +27,10 @@ $$
 
 Here $y_i$ is the true label distribution and $\hat{y}_i$ is the predicted probability distribution.
 
-But next-token prediction alone does not make the model a helpful assistant. For that, we do **Supervised Fine-Tuning (SFT)**. We show the model examples of good assistant responses and teach it to imitate that style, format, and behavior.
+But next-token prediction alone does not magically make the model a helpful assistant. For that, we do **Supervised Fine-Tuning (SFT)**. We show the model examples of good assistant responses and nudge it towards that style, format, and behavior.
 
 ### So what's the problem?
-Well, the problem is, even with SFT, you're still teaching the model by showing it example answers. I'd say this is like **Imitation**. And for everything you want to teach the model, you need explicit examples of what to do in each case. So data gathering is a big requirement as well. High-quality datasets at large scale are not easy to come by. Even then you might miss the niche cases that you didn't have examples for, aka the tail of the distribution (whatever that means). For example, you might have a lot of Python code in the dataset but the model might still struggle to write good PyTorch code. RL becomes useful when you can judge whether an output is good even if you do not have the perfect answer written out as a demonstration.
+Well, the problem is, even with SFT, you're still teaching the model by showing it example answers. I'd say this is like **Imitation**. And for everything you want to teach the model, you need explicit examples of what to do in each case. So data gathering is a big requirement as well. High-quality datasets at large scale are not easy to come by. Even then you might miss the niche cases that you didn't have examples for, aka the tail of the distribution (whatever that means). For example, you might have a lot of Python code in the dataset but the model might still struggle to write good PyTorch code. This is where RL starts looking attractive: sometimes judging an answer is easier than writing the perfect answer yourself.
 
 ## Reinforcement Learning
 
@@ -71,11 +71,11 @@ R_t &= \sum_{k=t}^{T} \gamma^{k-t} r_k,\quad \gamma \in [0,1]
 \end{aligned}
 $$
 
-The discounted version is common in general RL. It still values future rewards, but it weights nearer rewards more strongly, so a reward far in the future does not dominate the current decision. In LLM post-training, you will also see $\gamma = 1$ or no explicit discounting at all, because the episode is just a finite generated completion. Often the external reward arrives only at the end, while KL penalties or shaping rewards can be applied token by token.
+The discounted version is common in general RL. It still values future rewards, but it weights nearer rewards more strongly, so a reward far in the future does not dominate the current decision. For LLM post-training though, don't be surprised if you see $\gamma = 1$ or no explicit discounting. The "episode" is just a finite generated completion. Often the main reward comes only at the end, while things like KL penalties can be added token by token.
 
 One thing to notice here is that the return from time $t$ only accumulates rewards from $t$ onward. Why not include the rewards from the past too? Because we want to evaluate the value of being in the current state, or taking the current action, given what happens after it. Past rewards already happened and should not change how good this current decision is. If we included past rewards too, a bad action that follows a great opening could look better than a good recovery action that follows a bad opening. We do not want that.
 
-How do we go about achieving this? You can either improve the policy to predict the best actions directly, or you can learn a Q-function that predicts the expected return for each state-action pair and then choose actions that maximize the Q value. There is a whole family of RL methods built around Q-values. But for LLM post-training, the path we care about is usually policy optimization: directly changing the model's token probabilities.
+How do we go about achieving this? You can either improve the policy to predict the best actions directly, or you can learn a Q-function that predicts the expected return for each state-action pair and then choose actions that maximize the Q value. There is a whole family of RL methods built around Q-values. But for LLM post-training, the road we care about is usually policy optimization: directly changing the model's token probabilities.
 
 If a chess agent only sees near-optimal sequences of moves, it mostly reaches advantageous states and never learns how to handle disadvantageous positions or recover from them. It also might not be able to predict the best move in an amateur game.
 
@@ -92,11 +92,11 @@ _RL vs SFT on Go_
 
 Before we jump into the math, there is one annoying bit. We cannot directly backpropagate through the sentence "this sampled answer was good". The reward comes after the model has sampled text. So how do we update the model if the reward is not a differentiable function of the tokens? REINFORCE is the trick that lets us increase or decrease the probability of sampled text using only its log probability and the reward it received.
 
-The rest of the post follows one thread:
+From here, the thread is pretty simple:
 
 - **REINFORCE**: how reward can update sampled text
-- **PPO**: how to keep those updates from going off the rails
-- **DPO**: how to use preference pairs without online RL
+- **PPO**: how to stop those updates from going off the rails
+- **DPO**: how preference pairs let us avoid online RL
 - **GRPO**: how grouped, verifiable rewards can remove the critic
 
 ## REINFORCE
@@ -173,7 +173,7 @@ $$
 
 All great. But is raw reward enough? If the agent is already in a good state (almost winning a chess game), many actions might lead to positive reward. In our math-prompt example, an easy prompt might make all three completions look decent, even if one is better than the others. Without a baseline, all sampled actions can get reinforced just because the state was already good. This is noisy and not ideal.
 
-Suppose an easy prompt usually gets a reward of 8/10. A completion that scores 8 is not special; it is just average for that prompt. But if a hard prompt usually gets 2/10 and one completion scores 6, that is a much stronger signal. This is what the baseline helps capture. Instead of asking "was the reward high?", we ask "was the reward higher than expected for this state/prompt?"
+Suppose an easy prompt usually gets a reward of 8/10. A completion that scores 8 is not some genius move; it is just average for that prompt. But if a hard prompt usually gets 2/10 and one completion scores 6, now that is interesting. This is what the baseline helps capture. Instead of asking "was the reward high?", we ask "was the reward higher than expected for this state/prompt?"
 
 So what do we compare the reward against? We subtract a baseline from the reward. This baseline is usually a proxy for how good the state is before choosing the action. This helps reduce the variance of the gradient estimate. The formulation now becomes... It is very important that the baseline does not depend on the sampled action $y$. It can depend on $x$; if it is learned, its parameters are usually handled separately from the policy-gradient term.
 
@@ -203,7 +203,7 @@ Before the equations, why does PPO need all these extra terms? Here's the quick 
 
 So to make it more efficient, can we reuse the same rollout batch for multiple updates? We can, but we have to make sure that the policy (weights) that generated the rollout is not too far off from the current policy (weights) that we are doing gradient updates on. For the first step, this is exactly the same policy (ignoring trainer-inference mismatch, which is a separate problem). But if we want to do, say, 4 steps, the policy would have changed by the 2nd step and the mismatch needs to be mathematically addressed.
 
-In case of mismatch, the expectation (which is over generations $y$) is over the old policy $\pi_{\text{old}}$, but the logprobs and gradient are computed using the new/current policy $\pi_{\text{new}}$.
+In case of mismatch, the samples still came from the old policy $\pi_{\text{old}}$, but the logprobs and gradient are computed using the new/current policy $\pi_{\text{new}}$.
 
 ### The importance sampling correction
 Consider a probability distribution P for which you want to calculate the expectation over. But you unfortunately do not have access to samples from P. Instead you can sample from another distribution Q over the same input space. How would one calculate that?
@@ -217,7 +217,7 @@ $$
 \end{aligned}
 $$
 
-So here we converted an expectation over P to an expectation over Q by reweighting the samples with the ratio $\frac{P(x)}{Q(x)}$. This is exactly what we're about to do to the PPO case as well. Q is the fixed distribution that generated the rollouts. P is the distribution we're optimizing and gradient updating on. The advantage estimate $\hat{A}_t$ comes from the rollout batch and is treated as a fixed number during the PPO update steps.
+So here we converted an expectation over P to an expectation over Q by reweighting the samples with the ratio $\frac{P(x)}{Q(x)}$. This is exactly what we're about to do to the PPO case as well. Q is the fixed distribution that generated the rollouts. P is the distribution we're optimizing and gradient updating on. The advantage estimate $\hat{A}_t$ is calculated from the rollout batch and then treated like a fixed score during PPO updates.
 
 $$
 \begin{aligned}
@@ -236,7 +236,7 @@ $$
 
 One other thing when it comes to RL is, unlike SFT which is often forgiving of setup choices, RL is very finicky. Small changes in the setup can cause drastic differences. The range is as wide as learning vs collapsing. So we need to be careful. There can be rogue data samples or rollouts which spoil the training process. Also we need to make sure noise in the environment, reward, or rollouts does not mess it up.
 
-The older trust-region idea was to adjust the policy-gradient update so the new policy stayed inside a trusted neighborhood of the old policy, often measured with KL divergence. PPO, introduced in the [original PPO paper](https://arxiv.org/abs/1707.06347), is the simpler first-order version of that idea. Instead of solving a constrained optimization problem, it modifies the objective so the gradient stops helping once the new policy has moved too far from the rollout policy on a sampled action. So yes, the motivation is very much about controlling the gradient update, but PPO clipping is an approximation to trust-region behavior rather than a hard trust-region guarantee.
+The older trust-region idea was basically: adjust the policy-gradient update, but don't let the new policy run too far away from the old policy. That distance was often measured with KL divergence. PPO, introduced in the [original PPO paper](https://arxiv.org/abs/1707.06347), is a simpler first-order way to get a similar effect. Instead of solving a constrained optimization problem, it changes the objective so the gradient stops helping once the new policy has already moved too much on a sampled action. So yes, the motivation is very much about controlling the gradient update. Just remember that PPO clipping is an approximation to trust-region behavior, not a hard trust-region guarantee.
 
 $$
 \begin{aligned}
@@ -256,7 +256,7 @@ $$
 \right]
 $$
 
-Here $\mathbb{E}_t$ means we are averaging over the sampled token positions in the rollout batch.
+Here $\mathbb{E}_t$ just means we are averaging over the sampled token positions in the rollout batch.
 
 Note that the advantage can be both negative and positive for a given batch. So we want to look into how the trust-region clipping works in both cases. Assuming the usual $\epsilon = 0.2$, we have...
 
@@ -304,7 +304,7 @@ Do note that this is only a mental model for where the gradient stops; the actua
 ### The KL divergence penalty
 All is great so far. We formulated REINFORCE with baseline subtraction for reduced variance, added importance sampling to relieve rollout pressure, and added clipping to keep updates from getting too big. But do we want the model to freely move away from the SFT model? Not really. The SFT model we created already has a lot of capabilities and preferences baked into it. We do not want to stray too far from it. So we add a KL divergence penalty with respect to the same SFT model, often called the `reference model`, so that we don't drift too far off from it either.
 
-There are two related ways people talk about this, and it is worth separating them. In many LLM PPO/RLHF implementations, KL is folded into the reward at each generated token:
+There are two related ways people talk about this, and it is worth separating them. In many LLM PPO/RLHF implementations, KL is not just slapped on at the end. It is folded into the reward at each generated token:
 
 $$
 r_t^{\text{total}}
@@ -315,9 +315,9 @@ r_t^{\text{total}}
 \right)
 $$
 
-Here the task/reward-model score may arrive only at the end, while the KL penalty is applied token by token using the rollout policy, which then becomes $\pi_{\text{old}}$ during PPO updates. Then the critic predicts returns that already include this KL-shaped reward. Another way to write the idea is as an auxiliary KL penalty in the policy objective. Conceptually it is the same anchor: do better on the task, but don't drift too far from the reference model.
+Here the task/reward-model score may arrive only at the end, while the KL penalty is applied token by token using the rollout policy, which then becomes $\pi_{\text{old}}$ during PPO updates. So the critic ends up predicting returns that already include this KL-shaped reward. You will also see the same idea written as an auxiliary KL penalty in the policy objective. Either way, the intent is the same: do better on the task, but don't drift too far from the reference model.
 
-So a compact way to write the clipped objective with a KL penalty is:
+So a compact way to write the clipped objective with this KL anchor is:
 
 $$
 \begin{aligned}
@@ -383,7 +383,7 @@ If $r_w - r_l = 0$: sigmoid = 0.5, loss = $-\log(0.5) ≈ 0.693$
 
 If $r_w - r_l$ is negative: sigmoid < 0.5, loss is large
 
-Do note that we usually score the entire completion. The reward model gives one scalar reward for the full rollout, typically from the EOS or last non-padding token representation. That sequence-level reward can later be turned into token-level advantages by the PPO/GAE machinery. So just like when trying to predict the next token, we forward pass the entire hidden-state tensor of shape `(seq_len, hidden_dim)` and use the final valid token representation. For generation, that hidden state is multiplied by `lm_head`; for reward modeling, it is multiplied by `reward_head` to get the sequence reward. In a causal decoder, the final valid token can attend to the previous tokens, so it can serve as a summary position for the sequence. Read [my previous blog](https://datta0.github.io/posts/transformer-imagined/) for an in-depth understanding of the same.
+Do note that we usually score the entire completion. The reward model gives one scalar reward for the full rollout, typically from the EOS or last non-padding token representation. Later, PPO/GAE can spread that sequence-level reward into token-level advantages. So just like when trying to predict the next token, we forward pass the entire hidden-state tensor of shape `(seq_len, hidden_dim)` and use the final valid token representation. For generation, that hidden state is multiplied by `lm_head`; for reward modeling, it is multiplied by `reward_head` to get the sequence reward. In a causal decoder, the final valid token can attend to the previous tokens, so it can serve as a summary position for the sequence. Read [my previous blog](https://datta0.github.io/posts/transformer-imagined/) for an in-depth understanding of the same.
 
 ### Caution is advised
 But what happens if the reward or environment has a tiny loophole? When OpenAI trained agents to play hide-and-seek in an environment with some movable objects, they found some cool emergent behavior. This is also a good reminder that reward design and environment design matter a lot in RL. Small loopholes can become big learning signals.
@@ -406,7 +406,7 @@ But what happens if the reward or environment has a tiny loophole? When OpenAI t
   <source src="/assets/video/rl_for_llms/hide_and_seek_object_locking_no_audio.mp4" type="video/mp4">
 </video>
 
-The LLM version of this is reward hacking. If your reward model rewards confident tone more than correctness, the policy may learn to sound right instead of being right. That is why reward design and reward-model evaluation matter so much.
+The LLM version of this is reward hacking. If your reward model rewards confident tone more than correctness, the policy may learn to sound right instead of being right. And that is exactly why reward design and reward-model evaluation matter so much.
 
 ### The value/critic model
 
@@ -452,7 +452,7 @@ A^{GAE}_t &= \sum_{l=0}^{T-t}(\gamma\lambda)^l \delta_{t+l} \\
 \end{aligned}
 $$
 
-Notice the "rollout" here? These are the value predictions from the model snapshot used around rollout collection. In practice, the advantages/returns are usually computed once, detached, and then the value head is trained toward those targets during PPO updates. It is the same stale-data issue as the $\pi_{\text{old}}$ from the beginning of our PPO discussion.
+Notice the "rollout" here? These are the value predictions from the model snapshot used while collecting rollouts. In practice, the advantages/returns are usually computed once, detached, and then the value head is trained towards those targets during PPO updates. It is the same stale-data issue as the $\pi_{\text{old}}$ from the beginning of our PPO discussion.
 
 Because this value prediction is a per-token thing, can we just take the last hidden state like the reward model? Not really. We take the entire `(seq_len, hidden_dim)` sized tensor and pass it through a linear layer to get a scalar value for each token. One pass per sequence, akin to pretraining of LLMs.
 
@@ -462,7 +462,7 @@ PPO is great, but one needs to maintain a reward model and a value model. Both n
 
 In our running example, DPO would take pairs like "Completion C is preferred over Completion A" and directly push the policy toward the preferred completion relative to the reference model. The nice part? No online rollout loop is needed during this preference-tuning step.
 
-DPO starts from the idea that the optimal policy under a KL penalty implicitly defines a reward function. If we can express that reward using policy probabilities, we can plug it directly into the same pairwise preference loss used for reward models. Let's start with the basic KL-regularized objective:
+DPO starts from a neat observation: if you solve a KL-regularized RL objective, the optimal policy secretly tells you what the reward must have been. And if the reward can be written using policy probabilities, we can plug it directly into the same pairwise preference loss used for reward models. Let's start with the basic KL-regularized objective:
 
 $$
 \begin{aligned}
@@ -538,7 +538,7 @@ r(x,y_w) - r(x,y_l)
 \end{aligned}
 $$
 
-The $C(x)$ term is prompt-dependent, but for a chosen/rejected pair from the same prompt, it cancels out. That cancellation is the whole trick that makes the DPO objective so neat.
+The $C(x)$ term depends on the prompt, but both the chosen and rejected completions come from the same prompt. So it cancels out. That cancellation is the whole trick that makes the DPO objective so neat.
 
 What a clean, simple, and minimal formula we have arrived at. This will also change our objective function.
 
@@ -566,7 +566,7 @@ But now what about value estimation? Do we really need a separate critic if we a
 
 Why does this make sense? For an easy prompt, all the completions would get good reward from the functions, but when you take relative reward, that will die down to zero. There isn't much to learn when all the completions are equally good anyway. On the other hand, for a hard prompt, some completions will be much better than others and the relative reward will be high. This is where the learning happens.
 
-For example, for one math prompt, suppose we sample four completions and get rewards $[0, 0, 1, 1]$. The group mean is $0.5$, so the correct completions get positive relative advantage and the wrong completions get negative relative advantage. No critic had to predict whether the prompt itself was easy or hard.
+For example, say we sample four completions for one math prompt and get rewards $[0, 0, 1, 1]$. The group mean is $0.5$, so the correct completions get positive relative advantage and the wrong completions get negative relative advantage. No critic had to sit there and predict whether the prompt itself was easy or hard.
 
 Mathematically, if the group has rewards $\{r_i\}_{i=1}^{G}$:
 
@@ -578,7 +578,7 @@ $$
 \end{aligned}
 $$
 
-The original formulation normalized the advantage by the group standard deviation to keep the scale controlled. The small $\epsilon_{\text{std}}$ is there because if the group standard deviation is tiny, the division can amplify very small reward differences. Later work such as [Dr. GRPO](https://arxiv.org/pdf/2503.20783) argued that parts of the GRPO objective can introduce optimization bias, especially around response length, and proposed a modified objective. The point is, normalization and length scaling need care, because tiny objective details can change the training dynamics a lot.
+The original formulation normalized the advantage by the group standard deviation to keep the scale controlled. The small $\epsilon_{\text{std}}$ is there because if the group standard deviation is tiny, the division can make very small reward differences look bigger than they really are. Later work such as [Dr. GRPO](https://arxiv.org/pdf/2503.20783) argued that parts of the GRPO objective can introduce optimization bias, especially around response length, and proposed a modified objective. The point is, normalization and length scaling need care, because tiny objective details can change the training dynamics a lot.
 
 $$
 \mathcal{L}_{\mathrm{GRPO}}(\theta)
@@ -607,7 +607,7 @@ $$
 \right)
 $$
 
-So the DeepSeek team used GRPO-style RL to train models on math and code and saw behaviors like self-correction and self-critiquing, including the so-called "aha" moment in [DeepSeek-R1](https://arxiv.org/pdf/2501.12948). There were two notable variants: DeepSeek-R1-Zero, trained directly with RL from the base model, and DeepSeek-R1, which used cold-start reasoning data before RL. The latter recipe is more common now. Do note that response length going up can be both a sign of the model thinking longer and a sign of biased optimization criteria. In the loss function above, the per-completion term is divided by the length of the completion. This can give larger updates to shorter positive-advantage responses, while also giving weaker penalties to longer negative-advantage responses. So if incorrect long completions are not punished strongly enough, length can grow for the wrong reasons. Objective choices like this can affect length behavior, which is why caution is advised when doing RL.
+So the DeepSeek team used GRPO-style RL to train models on math and code and saw behaviors like self-correction and self-critiquing, including the so-called "aha" moment in [DeepSeek-R1](https://arxiv.org/pdf/2501.12948). There were two notable variants: DeepSeek-R1-Zero, trained directly with RL from the base model, and DeepSeek-R1, which used cold-start reasoning data before RL. The latter recipe is more common now. Do note that response length going up can be both a sign of the model thinking longer and a sign of biased optimization criteria. In the loss function above, the per-completion term is divided by the length of the completion. This can push harder on shorter good responses, while also being softer on longer bad responses. And if long wrong completions are not punished enough, length can grow for the wrong reasons. Objective choices like this can affect length behavior, which is why caution is advised when doing RL.
 
 ![DeepSeek-R1 reward](assets/img/blogs/rl_for_llm/ds_r1_reward.jpg)
 _Reward achieved by DeepSeek-R1_
