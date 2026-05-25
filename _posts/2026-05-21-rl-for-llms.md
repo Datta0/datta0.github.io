@@ -85,22 +85,22 @@ So what if we skip learning a separate Q-function and directly improve the polic
 
 ### Why Reinforcement Learning over Supervised Fine-Tuning?
 
-Well, let's look at history so that the RL fanboy in me doesn't give you a biased opinion. DeepMind's game-playing systems made this contrast very visible. Earlier [AlphaGo](https://deepmind.google/research/alphago/) systems used supervised learning to imitate expert human Go moves and then improved with reinforcement learning. AlphaGo Zero and [AlphaZero](https://arxiv.org/abs/1712.01815) pushed this further: they learned from self-play with no human game data, and AlphaZero reached superhuman play in chess, shogi, and Go. I rest my case.
+Well, let's look at history so that the RL fanboy in me doesn't give you a biased opinion. DeepMind's game-playing systems made this contrast very visible. Earlier [AlphaGo](https://www.nature.com/articles/nature16961) systems used supervised learning to imitate expert human Go moves and then improved with reinforcement learning. AlphaGo Zero and [AlphaZero](https://arxiv.org/abs/1712.01815) pushed this further: they learned from self-play with no human game data, and AlphaZero reached superhuman play in chess, shogi, and Go. I rest my case.
 
 ![RL vs SFT on Go](assets/img/blogs/rl_for_llm/alpha_go_rl.jpg)
 _RL vs SFT on Go_
 
-Before we jump into the math, there is one annoying bit. We cannot directly backpropagate through the sentence "this sampled answer was good". The reward comes after the model has sampled text. So how do we update the model if the reward is not a differentiable function of the tokens? REINFORCE is the trick that lets us increase or decrease the probability of sampled text using only its log probability and the reward it received.
+Before we jump into the math, there is one annoying bit. We cannot directly backpropagate through the sentence "this sampled answer was good". The reward comes after the model has sampled text. So how do we update the model if the reward is not a differentiable function of the tokens? [REINFORCE](https://link.springer.com/article/10.1007/BF00992696) is the trick that lets us increase or decrease the probability of sampled text using only its log probability and the reward it received.
 
 From here, the thread is pretty simple:
 
-- **REINFORCE**: how reward can update sampled text
-- **PPO**: how to stop those updates from going off the rails
-- **DPO**: how preference pairs let us avoid online RL
-- **GRPO**: how grouped, verifiable rewards can remove the critic
+- **[REINFORCE](#reinforce)**: how reward can update sampled text
+- **[PPO](#ppo)**: how to stop those updates from going off the rails
+- **[DPO](#dpo)**: how preference pairs let us avoid online RL
+- **[GRPO](#grpo)**: how grouped, verifiable rewards can remove the critic
 
 ## REINFORCE
-This is pretty much the foundation of many modern policy-gradient algorithms and one among the earliest policy-gradient methods. In the simplest form, the formulation is to maximize the expected reward. So the objective is to
+This is pretty much the foundation of many modern policy-gradient algorithms and one of the earliest policy-gradient methods. In the simplest form, the formulation is to maximize the expected reward. So the objective is to
 
 $$
 \max_{\pi} \mathbb{J}(\pi)
@@ -189,7 +189,7 @@ where $b(x)$ is the baseline.
 
 
 ## PPO
-This is one of the workhorse reinforcement learning algorithms used in RLHF. It is pretty much some more mathematical adjustments on top of REINFORCE. The baseline-subtracted reward is typically called the advantage here. In the initial days of LLMs, especially around GPT-3 and InstructGPT, there was a need for a way to train models to be helpful, truthful, harmless, etc. All the qualities that are easier to judge and harder to quantify mathematically. So one way was to use reinforcement learning where helpful and correct responses would get higher rewards. But unlike pretraining or supervised fine-tuning, this involves generation. Generating 1000 new tokens takes 1000 autoregressive decoding steps, whereas in pretraining/SFT a 1000-token sample can be trained with a single teacher-forced forward pass.
+[PPO](https://arxiv.org/abs/1707.06347) is one of the workhorse reinforcement learning algorithms used in RLHF. It is pretty much some more mathematical adjustments on top of REINFORCE. The baseline-subtracted reward is typically called the advantage here. In the initial days of LLMs, especially around GPT-3 and InstructGPT, there was a need for a way to train models to be helpful, truthful, harmless, etc. All the qualities that are easier to judge and harder to quantify mathematically. So one way was to use reinforcement learning where helpful and correct responses would get higher rewards. But unlike pretraining or supervised fine-tuning, this involves generation. Generating 1000 new tokens takes 1000 autoregressive decoding steps, whereas in pretraining/SFT a 1000-token sample can be trained with a single teacher-forced forward pass.
 
 Before the equations, why does PPO need all these extra terms? Here's the quick cheat sheet:
 
@@ -236,7 +236,7 @@ $$
 
 One other thing when it comes to RL is, unlike SFT which is often forgiving of setup choices, RL is very finicky. Small changes in the setup can cause drastic differences. The range is as wide as learning vs collapsing. So we need to be careful. There can be rogue data samples or rollouts which spoil the training process. Also we need to make sure noise in the environment, reward, or rollouts does not mess it up.
 
-The older trust-region idea was basically: adjust the policy-gradient update, but don't let the new policy run too far away from the old policy. That distance was often measured with KL divergence. PPO, introduced in the [original PPO paper](https://arxiv.org/abs/1707.06347), is a simpler first-order way to get a similar effect. Instead of solving a constrained optimization problem, it changes the objective so the gradient stops helping once the new policy has already moved too much on a sampled action. So yes, the motivation is very much about controlling the gradient update. Just remember that PPO clipping is an approximation to trust-region behavior, not a hard trust-region guarantee.
+The older trust-region idea was basically: adjust the policy-gradient update, but don't let the new policy run too far away from the old policy. That distance was often measured with KL divergence. PPO is a simpler first-order way to get a similar effect. Instead of solving a constrained optimization problem, it changes the objective so the gradient stops helping once the new policy has already moved too much on a sampled action. So yes, the motivation is very much about controlling the gradient update. Just remember that PPO clipping is an approximation to trust-region behavior, not a hard trust-region guarantee.
 
 $$
 \begin{aligned}
@@ -264,8 +264,8 @@ The clipping handles the two signs of advantage differently:
 
 | Advantage | Not clipped | Clipped |
 |---|---|---|
-| **Positive advantage**<br>good answer<br>reinforce | $\rho_t\hat{A}_t$<br>answer is good<br>not over-updated yet<br>gradient can still increase probability | $(1+\epsilon)\hat{A}_t$<br>answer is already sufficiently more likely<br>gradient is stopped |
-| **Negative advantage**<br>bad answer<br>discourage | $\rho_t\hat{A}_t$<br>answer is bad<br>not over-updated yet<br>gradient can still decrease probability | $(1-\epsilon)\hat{A}_t$<br>answer is already sufficiently less likely<br>gradient is stopped |
+| **Positive advantage**<br>good answer<br>reinforce | $\rho_t\hat{A}_t$<br>answer is good<br>not over-updated yet<br>gradient can still increase probability | $\rho_t > 1+\epsilon$<br>$(1+\epsilon)\hat{A}_t$<br>answer is already sufficiently more likely<br>gradient is stopped |
+| **Negative advantage**<br>bad answer<br>discourage | $\rho_t\hat{A}_t$<br>answer is bad<br>not over-updated yet<br>gradient can still decrease probability | $\rho_t < 1-\epsilon$<br>$(1-\epsilon)\hat{A}_t$<br>answer is already sufficiently less likely<br>gradient is stopped |
 
 <div id="ppo-clip-widget" style="margin: 1rem 0 1.5rem; padding: 1rem; border: 1px solid rgba(128, 128, 128, 0.35); border-radius: 8px; background: rgba(128, 128, 128, 0.08);">
   <label for="ppo-epsilon" style="display: block; margin-bottom: 0.5rem;">
@@ -317,13 +317,13 @@ $$
 
 Here the task/reward-model score may arrive only at the end, while the KL penalty is applied token by token using the rollout policy, which then becomes $\pi_{\text{old}}$ during PPO updates. So the critic ends up predicting returns that already include this KL-shaped reward. You will also see the same idea written as an auxiliary KL penalty in the policy objective. Either way, the intent is the same: do better on the task, but don't drift too far from the reference model.
 
-So a compact way to write the clipped objective with this KL anchor is:
+If written as an auxiliary policy penalty instead, a compact way to show the clipped objective with this KL anchor is:
 
 $$
 \begin{aligned}
 \mathbb{J}
 = \mathbb{E}_{t}
-\Big[ 
+\Big[
 &\min\left(
 \rho_t \hat{A}_t,
 \operatorname{clip}(\rho_t, 1-\epsilon, 1+\epsilon) \hat{A}_t
@@ -386,7 +386,7 @@ If $r_w - r_l$ is negative: sigmoid < 0.5, loss is large
 Do note that we usually score the entire completion. The reward model gives one scalar reward for the full rollout, typically from the EOS or last non-padding token representation. Later, PPO/GAE can spread that sequence-level reward into token-level advantages. So just like when trying to predict the next token, we forward pass the entire hidden-state tensor of shape `(seq_len, hidden_dim)` and use the final valid token representation. For generation, that hidden state is multiplied by `lm_head`; for reward modeling, it is multiplied by `reward_head` to get the sequence reward. In a causal decoder, the final valid token can attend to the previous tokens, so it can serve as a summary position for the sequence. Read [my previous blog](https://datta0.github.io/posts/transformer-imagined/) for an in-depth understanding of the same.
 
 ### Caution is advised
-But what happens if the reward or environment has a tiny loophole? When OpenAI trained agents to play hide-and-seek in an environment with some movable objects, they found some cool emergent behavior. This is also a good reminder that reward design and environment design matter a lot in RL. Small loopholes can become big learning signals.
+But what happens if the reward or environment has a tiny loophole? When [OpenAI trained agents to play hide-and-seek](https://openai.com/index/emergent-tool-use/) in an environment with some movable objects, they found some cool emergent behavior. This is also a good reminder that reward design and environment design matter a lot in RL. Small loopholes can become big learning signals.
 
 <p><strong>1. Hiders construct shelters</strong></p>
 
@@ -412,12 +412,12 @@ The LLM version of this is reward hacking. If your reward model rewards confiden
 
 Great, we tackled one problem of reward assignment. We also need to think about the "baseline" calculation given a prompt, right? After all, that is what stabilizes the training process. In the chess example, the baseline would be the evaluation of the given position. In the math-prompt example, it is closer to asking, "How much reward should we expect from this prompt before seeing this particular sampled completion?" Neither scoring the answer, nor predicting the answer. Just evaluating the current state.
 
-Well, you know the script by now. Can humans provide this baseline for every prompt and every partial completion? Obviously not. Just like reward model, when we can't scalably do it with humans, we offload it to models. Welcome to yet another model :).
+Well, you know the script by now. Can humans provide this baseline for every prompt and every partial completion? Obviously not. Just like the reward model, when we can't scalably do it with humans, we offload it to models. Welcome to yet another model :).
 This one is again pretty similar to the reward model.
 
 ```
-Critic model: tokens -> embeddings -> decoder layers -> 
-              value_head (model_dim -> 1) -> value per token
+Critic model: tokens -> embeddings -> decoder layers
+              -> value_head (model_dim -> 1) -> value per token
 ```
 
 ![The tried and tested method](assets/img/blogs/rl_for_llm/slap_a_model.jpg)
@@ -440,7 +440,7 @@ $$
 
 The idea is that the value of a state can be estimated in many ways. It can be Monte Carlo, where we depend on rollout rewards, or TD(k), where we use the next `k` states' values to estimate the value of the current state.
 
-### Generalized Advantage Estimation (GAE)
+### [Generalized Advantage Estimation (GAE)](https://arxiv.org/abs/1506.02438)
 
 In PPO we use something called Generalized Advantage Estimation (GAE), which is a combination of TD and Monte Carlo-style estimates. The idea is Monte Carlo is less biased but noisy because it depends on full rollouts. TD is more stable but biased because it bootstraps from a value estimate. GAE combines both by using an exponentially weighted sum of TD residuals.
 
@@ -458,7 +458,7 @@ Because this value prediction is a per-token thing, can we just take the last hi
 
 ## DPO
 
-PPO is great, but one needs to maintain a reward model and a value model. Both need their own training. If the model is so smart that it can predict the reward and also the value of a state, why not let it do the preference optimization implicitly and skip the extra models altogether? We anyway have pairwise preference data. No separate reward model, no value model. Sounds good, right? That is exactly what DPO does. The [paper itself](https://arxiv.org/abs/2305.18290) was titled "Direct Preference Optimization: **Your Language Model is Secretly a Reward Model**". But for that we need to make some small sacrifices. We drop the advantage estimate and clipping for an easier and simpler formulation.
+PPO is great, but one needs to maintain a reward model and a value model. Both need their own training. If the model is so smart that it can predict the reward and also the value of a state, why not let it do the preference optimization implicitly and skip the extra models altogether? We anyway have pairwise preference data. No separate reward model, no value model. Sounds good, right? That is exactly what [DPO](https://arxiv.org/abs/2305.18290) does. The paper itself was titled "Direct Preference Optimization: **Your Language Model is Secretly a Reward Model**". But for that we need to make some small sacrifices. We drop the advantage estimate and clipping for an easier and simpler formulation.
 
 In our running example, DPO would take pairs like "Completion C is preferred over Completion A" and directly push the policy toward the preferred completion relative to the reference model. The nice part? No online rollout loop is needed during this preference-tuning step.
 
@@ -555,6 +555,14 @@ $$
 
 No need for a separate reward model, no critic model, and no online rollout loop during fine-tuning. A lot of compute and time saved. This has been one of the go-to methods for preference tuning over the last few years.
 
+The problem with DPO is, the model is being trained on samples it did not generate. This is much closer to SFT than to traditional RL, though the loss formulation is inspired by RL.
+
+## Different paradigms in RL
+- **On Policy RL**: The trajectories which we score and update on are generated by the model/agent that we're updating. For example, to teach the model to solve math, you ask the model to generate completions on its own and use that as the trajectory to assign reward. Or a chess playing agent using its own gameplay and the feedback of the same to learn.
+- **Off Policy RL**: This is where the trajectories can be generated by a different model or a variant of the same model interacting with the environment. The interaction part is crucial here.
+
+The problem with offline preference methods like DPO is, they are closer to SFT than RL in mechanism except for the loss formulation. So at training time, the model has access to "ground truth" or "anchor" tokens for generating future tokens. If at inference time the model makes a mistake in one of the intermediate tokens, the error compounds and keeps on going. The offline preference-tuned model might never recover. But an on-policy agent might have seen such mid-trajectory drifts and hence would have learnt to course correct. That being said, online rollouts, especially in case of LLMs, are expensive as previously stated due to requiring multiple sequential forward passes over the model.
+
 ## GRPO
 
 OK last one, I promise :).
@@ -619,11 +627,11 @@ But what if the reward is not verifiable, like helpfulness or harmlessness? You 
 
 ## Putting it side by side
 
-| Method | Needs online rollouts? | Needs reward model? | Needs critic/value model? | Best fit |
+| Method | Online rollouts /<br>on-policy updates? | Reward model? | Critic /<br>value model? | Best fit |
 |---|---:|---:|---:|---|
-| PPO | Yes | Often | Yes | RLHF with learned rewards |
-| DPO | No | No | No | Pairwise preference data |
-| GRPO | Yes | No for RLVR | No | Math, code, and verifiable rewards |
+| PPO | ~Yes | Often | Yes | RLHF with<br>learned rewards |
+| DPO | No | No | No | Pairwise<br>preference data |
+| GRPO | ~Yes | No<br>for RLVR | No | Math, code,<br>verifiable rewards |
 
 
 ## TLDR
@@ -632,18 +640,24 @@ But what if the reward is not verifiable, like helpfulness or harmlessness? You 
 - Baseline subtraction reduces variance. KL divergence with respect to the SFT/reference model acts as an anchor. Trust-region clipping improves stability.
 - PPO is a major RLHF algorithm for LLMs, but it commonly uses an actor, reward model, value model, and reference model.
 - DPO makes the reward implicit. Only chosen-rejected preference pairs are needed. No separate reward or critic model during policy training.
+- On policy methods are harder and slower to train (systems challenges) but more robust
 - GRPO uses group statistics as the baseline. No critic is needed. Verifiable rewards are the big deal here.
 
 
 ## Final thoughts
 
-Reinforcement learning has been the go-to for surpassing human-level performance on games, and it is now a major ingredient in tasks like math and coding. It comes in different flavors and you're free to pick whatever you like. But the key is to test the waters before diving deep in. Today we mostly looked at the math and intuition behind the formulations. In the future we'll go over the systems side of it. Given the insane amount of memory required for maintaining all those copies and the different components at play like trainer, inference engine etc, it becomes a very big task to manage the systems and make sure that they are in sync. It's going to be another exciting blog, so stay tuned. Until then, happy brainstorming!
+Reinforcement learning has been the go-to for surpassing human-level performance on games, and it is now a major ingredient in tasks like math and coding. It comes in different flavors and you're free to pick whatever you like. But the key is to test the waters before diving deep in. Today we mostly looked at the math and intuition behind the formulations.
+
+In the future we'll go over the systems side of it. Given the insane amount of memory required for maintaining all those copies and the different components at play like trainer, inference engine etc, it becomes a very big task to manage the systems and make sure that they are in sync. It's going to be another exciting blog, so stay tuned. Until then, happy brainstorming!
 
 ## References
 
 - [AlphaZero: Mastering Chess and Shogi by Self-Play with a General Reinforcement Learning Algorithm](https://arxiv.org/abs/1712.01815)
+- [Mastering the game of Go with deep neural networks and tree search](https://www.nature.com/articles/nature16961)
 - [OpenAI: Emergent Tool Use from Multi-Agent Interaction](https://openai.com/index/emergent-tool-use/)
+- [Simple Statistical Gradient-Following Algorithms for Connectionist Reinforcement Learning](https://link.springer.com/article/10.1007/BF00992696)
 - [Proximal Policy Optimization Algorithms](https://arxiv.org/abs/1707.06347)
+- [High-Dimensional Continuous Control Using Generalized Advantage Estimation](https://arxiv.org/abs/1506.02438)
 - [Hugging Face Deep RL Course: Visualize the Clipped Surrogate Objective Function](https://huggingface.co/learn/deep-rl-course/unit8/visualize)
 - [Training Language Models to Follow Instructions with Human Feedback](https://arxiv.org/abs/2203.02155)
 - [Direct Preference Optimization: Your Language Model is Secretly a Reward Model](https://arxiv.org/abs/2305.18290)
