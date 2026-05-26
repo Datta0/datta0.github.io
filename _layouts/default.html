@@ -81,6 +81,10 @@ layout: compress
       {% include {{ _include_path }} %}
     {% endfor %}
 
+    {% if page.content contains 'llm-rl-memory-widget' %}
+      <script defer src="{{ '/assets/js/scripts/llm-rl-memory-widget.js' | relative_url }}"></script>
+    {% endif %}
+
     {% include_cached search-loader.html lang=lang %}
   </body>
 </html>

@@ -5,7 +5,6 @@ author: datta0
 date: 2026-05-30T23:00:00+05:30
 categories: [LLM, Fine-tuning, RL, Math, Systems, GPU]
 tags: [LLM, Fine-tuning, RL, Math, Systems GPU]
-render_with_liquid: false
 math: true
 image:
   path: /assets/img/blogs/systems_for_llm_rl/rl_for_llm_header_wide.jpg
@@ -71,378 +70,111 @@ Assuming that you have `l` layers, $n_h$ query heads, $n_{kv}$ key-value heads e
 
 So lets take the example of [Qwen3-8B](https://huggingface.co/Qwen/Qwen3-8B/blob/main/config.json) which has 36 layers, 32 attn heads, 8 KV heads, hidden size of 4096 and MLP dimension of 12288. This is how the memory requirement looks like:
 
-<style>
-  #llm-rl-memory-widget {
-    --mem-bg: color-mix(in srgb, var(--card-bg, var(--main-bg, #fff)) 92%, var(--text-color, #222));
-    --mem-border: color-mix(in srgb, var(--main-border-color, #d8d8d8) 72%, var(--text-muted-color, #777));
-    --mem-panel: color-mix(in srgb, var(--main-bg, #fff) 88%, var(--text-color, #222));
-    --mem-muted: var(--text-muted-color, #6f6f6f);
-    --mem-text: var(--text-color, #2f2f35);
-    --mem-heading: var(--heading-color, #222);
-    --mem-blue: #3b82f6;
-    --mem-green: #16a34a;
-    --mem-amber: #f59e0b;
-    margin: 1rem 0 1.6rem;
-    padding: 1rem;
-    border: 1px solid var(--mem-border);
-    border-radius: 8px;
-    background: var(--mem-bg);
-    color: var(--mem-text);
-  }
+{% include widgets/llm-rl-memory-widget.html %}
 
-  #llm-rl-memory-widget * {
-    box-sizing: border-box;
-  }
 
-  #llm-rl-memory-widget .memory-widget-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 1rem;
-    margin-bottom: 1rem;
-  }
+If you have atleast multiple GPUs, if not six hundred thousand like Meta, this much memory requirement is a lot to deal with. So we need to look for ways to optimise this.
 
-  #llm-rl-memory-widget h4 {
-    margin: 0 0 0.2rem;
-    color: var(--mem-heading);
-    font-size: 1.05rem;
-  }
+## The lifecycle
+First lets see what are the steps involved in this setup so that we can identify potential places to improve.
 
-  #llm-rl-memory-widget .memory-widget-subtitle,
-  #llm-rl-memory-widget .memory-widget-note {
-    margin: 0;
-    color: var(--mem-muted);
-    font-size: 0.88rem;
-    line-height: 1.45;
-  }
+```
+    -> sync weights from trainer to inference engine
+    -> Inferenve Engine generates rollouts/completions # Inference engine is only involved here and trainer is not needed 
+    -> Trainer fwd pass -> trainer bwd pass
+    -> Gradients (accumulate) -> Optimizer step -> Update weights 
+```
+## Shut it down, spin it back up
 
-  #llm-rl-memory-widget .memory-total {
-    min-width: 8rem;
-    text-align: right;
-  }
+If you look closely, the trainer phase and inference engine phase sequentially follow each other with no overlap. That should give us some idea on what we can do. If we can startup and tear down inference server instantaneously, we can free up the space occupied which is `weights + activations + KVCache` so that space can be used for optimiser states and gradients. 
+Now once the forward and bwd passes finish, you can offload the trainer components to CPU RAM assuming that we have a fast enough communication between CPU and GPU and there is enough space on CPU. 
+I'd leave it as an exercise for you to think why/how this works when using gradient_accumulation_steps and/or trainer_batch_size and inference_batch_size are not the same. Hint: You might need to repeat the same thing multiple times but smartly. 
 
-  #llm-rl-memory-widget .memory-total span {
-    display: block;
-    color: var(--mem-heading);
-    font-size: 1.8rem;
-    font-weight: 800;
-    line-height: 1;
-  }
+This way, you can get away with only needing `~max(trainer_memory, inference_memory)`. This can be anywhere from 30%-50% lesser than having both on memory at the same time. The savings scale with increase in sequence/completion length. If you are doing LoRA, this can be closer to 50% if not more becaue the gradients and optimiser states are very little fraction of the memory requirement.
 
-  #llm-rl-memory-widget .memory-controls {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.9rem;
-    margin-bottom: 1rem;
-  }
+The two big questions to answer here are
+1. Can you spin up and shut down the inference engine quickly?
+2. Can you offload the trainer components to CPU RAM quickly?
 
-  #llm-rl-memory-widget .memory-control {
-    padding: 0.75rem;
-    border: 1px solid var(--mem-border);
-    border-radius: 8px;
-    background: var(--mem-panel);
-  }
+### Inference Engine Startup/Shutdown
+If you have ever interacted with vLLM, the startup time can take a few seconds to a few minutes at least. It goes through a whole lot of steps.
+- Weight loading
+- Profiling
+  vLLM runs a dummy forward pass with the selected input sizes to estimate the activation memory requirement. This is done so that once the vLLM server starts up, there's ~0% chance of it OOMing.
+  You profile, understand memory requirements and fail fast if its not enough. This takes a few seconds
+- CUDA Graph capture
+  This is a very important step for performance. I have seen ~20-30% performance loss if you do not do this. This too takes a few seconds
+- KVCache allocation
+  This is done to pre-allocate the KVCache memory so that we don't have to allocate it during inference. 
 
-  #llm-rl-memory-widget .memory-control label {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 0.8rem;
-    margin-bottom: 0.55rem;
-    color: var(--mem-heading);
-    font-size: 0.92rem;
-    font-weight: 700;
-  }
+The problem is if you shutdown and restart server, you're wasting at least a couple of minutes every step. If you want to do a large training run, this will be a significant portion of your total training time. If the generated tokens aren't too many, this potentially can take more time than generation and fwd/bwd pass. So you don't want do do that but also don't want to lose the memory advantages you get from freeing up the inference engine memory.
 
-  #llm-rl-memory-widget .memory-control output {
-    color: var(--mem-muted);
-    font-variant-numeric: tabular-nums;
-    font-weight: 600;
-    white-space: nowrap;
-  }
+The middle ground is [Sleep Mode](https://docs.vllm.ai/en/latest/features/sleep_mode/) from vLLM. What it does is, it just discards/offloads weights and KVCache which is ~80% of the inference engine memory anyway. In general, sleep and wakeup for say a 8B model happens within a second or two, where it just puts the weight back to the same location on GPU where it previously was. So this is free appetizer if not free lunch.
 
-  #llm-rl-memory-widget input[type="range"] {
-    width: 100%;
-    accent-color: var(--link-color, #2563eb);
-  }
+## Chunked loss calculation
 
-  #llm-rl-memory-widget select,
-  #llm-rl-memory-widget input[type="number"] {
-    width: 100%;
-    min-height: 2.25rem;
-    padding: 0.35rem 0.5rem;
-    border: 1px solid var(--mem-border);
-    border-radius: 6px;
-    background: var(--main-bg, #fff);
-    color: var(--mem-text);
-  }
+When you have a model like Qwen3-8B for GRPO, assume that you have a sequence length of 16K and a batch size of 4. In BF16, the memory usage looks like:
 
-  #llm-rl-memory-widget .memory-bar {
-    display: flex;
-    width: 100%;
-    height: 2rem;
-    overflow: hidden;
-    border: 1px solid var(--mem-border);
-    border-radius: 999px;
-    background: var(--mem-panel);
-  }
+- Hidden States: $bsz * hidden_size * seq_len = 16384 * 4096 * 4 = 0.5 GiB$
+- Logits: $bsz * vocab_size * seq_len = 16384 * 128K * 4 = 16 GiB$
 
-  #llm-rl-memory-widget .memory-bar-segment {
-    min-width: 0.2rem;
-    transition: width 140ms ease;
-  }
+So if you materalise the logits, you're going to pay a hefty hefy prize. So the moral is to not materialise the logits. Hidden states are much more easier on GPU memory and we anyway need to store them because every subsequent layer needs it and is of same shape/size. 
 
-  #llm-rl-memory-widget .memory-bar-segment.weights {
-    background: var(--mem-blue);
-  }
+$$
+\begin{aligned}
+\mu_G &= \frac{1}{G}\sum_{j=1}^{G} r_j \\
+\sigma_G &= \sqrt{\frac{1}{G}\sum_{j=1}^{G}(r_j-\mu_G)^2} \\
+\hat{A}_i &= \frac{r_i - \mu_G}{\sigma_G + \epsilon_{\text{std}}}
+\end{aligned}
+$$
 
-  #llm-rl-memory-widget .memory-bar-segment.activations {
-    background: var(--mem-green);
-  }
+$$
+\mathcal{L}_{\mathrm{GRPO}}(\theta)
+=
+-\mathbb{E}_{q,\{o_i\}_{i=1}^{G}}
+\left[
+\frac{1}{G}\sum_{i=1}^{G}
+\frac{1}{|o_i|}
+\sum_{t=1}^{|o_i|}
+\ell_{i,t}(\theta)
+\right]
+$$
 
-  #llm-rl-memory-widget .memory-bar-segment.kv-cache {
-    background: var(--mem-amber);
-  }
+The loss is just a sum over the tokens of a sequence which is then aggregated over the group. So one token's contribution to the loss is independent of other tokens in the same sequence. So instead of trying to materalise and calculate at once, what we can do is write a kernel which iterates over the tokens, calculates the loss for that token, and accumulates it. This way, we don't have to materialise the logits and can keep the memory usage low. We talked more about GPU architecture, how streaming output can be calculated and how kernels can be useful in our previous blog [The MathemaTricks behind Flash Attention](https://datta0.github.io/posts/flash-attention/#a-slight-detour-into-gpu-architecture).
 
-  #llm-rl-memory-widget .memory-breakdown {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.75rem;
-    margin: 0.8rem 0 0.9rem;
-  }
 
-  #llm-rl-memory-widget .memory-stat {
-    padding: 0.65rem 0.75rem;
-    border: 1px solid var(--mem-border);
-    border-radius: 8px;
-    background: var(--mem-panel);
-  }
+## LoRA - Weight Sharing
+By now you wouldn't need a re introduction to LoRA. Basically instead of training full weights, you train an adapter (which is like a lego block) which keeps gradients and optimiser states in check thus saving a lot of memory. For further details, read [The Lore behind LoRA](https://datta0.github.io/posts/the-lore-behind-lora/).
 
-  #llm-rl-memory-widget .memory-stat-label {
-    display: flex;
-    align-items: center;
-    gap: 0.45rem;
-    color: var(--mem-muted);
-    font-size: 0.82rem;
-  }
+Because the weights are frozen, for training, there is no need to track gradients and optimize the states and the weights are left in inference only mode. This is what VLM also has anyway. So instead of having to store two copies of the weights, one for the trainer and one for inference engine, we can just load it once and reuse them. So what we end up doing is load the vLLM instance, load a dummy hugging face trainer model, point each of the weights to the pointers of VLM weights, and load LoRa on top of that.
 
-  #llm-rl-memory-widget .memory-dot {
-    width: 0.65rem;
-    height: 0.65rem;
-    flex: 0 0 auto;
-    border-radius: 50%;
-  }
+TODO: Add a picture or smth like that for representation
 
-  #llm-rl-memory-widget .memory-stat strong {
-    display: block;
-    margin-top: 0.25rem;
-    color: var(--mem-heading);
-    font-size: 1.25rem;
-    font-variant-numeric: tabular-nums;
-  }
+You can combine this optimization with sleep mode but the only thing is you do not want to offload or discard the model weights because they are used by the trainer. Another side effect of this which turns out to be an advantage is that you save the time that it requires to offload and onload weights. vLLM anyway exposes a toggle called [LoRArequest](https://docs.vllm.ai/en/latest/features/lora/) to load the LoRA adapter for serving inference requests. One final optimization that we do is not store the LoRa adapter to disk and reload from disk for LoRa request, but load it in memory so that we skip the synchronization and copy path.
 
-  #llm-rl-memory-widget details {
-    margin: 0.85rem 0;
-  }
+This can also be done for QLORA as long as vLLM doesn't modify the weight storage layout for the quantized tensors which it generally does for MOE models. So gotta be careful there...
 
-  #llm-rl-memory-widget summary {
-    cursor: pointer;
-    color: var(--link-color, #2563eb);
-    font-weight: 700;
-  }
+All of these optimizations are a part of Unsloth and it supports a lot of popular models like Qwen, Llama, Mistral, Gemma, including their Vision Language Model series. All you need to do to enable this is 
 
-  #llm-rl-memory-widget .memory-advanced-grid {
-    display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 0.7rem;
-    margin-top: 0.75rem;
-  }
+```python
+from unsloth import FastLanguageModel
 
-  #llm-rl-memory-widget .memory-number label {
-    display: block;
-    margin-bottom: 0.3rem;
-    color: var(--mem-muted);
-    font-size: 0.8rem;
-    font-weight: 700;
-  }
+model, tokenizer = FastLanguageModel.from_pretrained(
+    model_name = "unsloth/Qwen3-4B",
+    max_seq_length = 2048,
+    dtype = None,
+    load_in_4bit = False,
+    fast_inference = True, # Enables weight sharing
+    unsloth_vllm_standby = True, # Enables sleep mode optimisation
+)
+```
 
-  @media (max-width: 680px) {
-    #llm-rl-memory-widget .memory-widget-header,
-    #llm-rl-memory-widget .memory-controls,
-    #llm-rl-memory-widget .memory-breakdown,
-    #llm-rl-memory-widget .memory-advanced-grid {
-      grid-template-columns: 1fr;
-    }
+## Async GRPO
 
-    #llm-rl-memory-widget .memory-widget-header {
-      display: grid;
-    }
+Assuming that you are not in GPU poor and have multiple GPUs to play around with for GRPO, one optimization you can explore is to perform the rollouts and trainer passes simultaneously.In general, synchronous and sequential is preferred because it is mathematically accurate. But it has been observed multiple times that even though the weights are the same because of kernels changing and the batch size changing, there is a drift between the logits or the completions generated by the trainer as compared to those generated by the inference engine. People tend to use importance sampling and other correction methods to correct this.But if you are going that far anyway, why not agree that there is a slight drift and not enforce the synchronous or sequential processing of generation / rollout and training.
 
-    #llm-rl-memory-widget .memory-total {
-      text-align: left;
-    }
-  }
-</style>
+This is exactly what Async GRPO does, where inference engine on one GPU generates rollouts for the second batch while the trainer is forward passing through the first batch. This means that inference engine is behind by a step or two when it comes to the weights but because we do trust region and gradient clipping there is not much of a difference between a couple of steps which cannot be recovered by doing importance sampling.
 
-<div id="llm-rl-memory-widget">
-  <div class="memory-widget-header">
-    <div>
-      <h4>Qwen3-8B rollout memory sketch</h4>
-      <p class="memory-widget-subtitle">Change the rollout shape and watch where the inference-side VRAM goes.</p>
-    </div>
-    <div class="memory-total">
-      <span id="llm-rl-total-memory">0.0 GiB</span>
-      <p class="memory-widget-subtitle">total</p>
-    </div>
-  </div>
+# TODO: Another diagram
 
-  <div class="memory-controls">
-    <div class="memory-control">
-      <label for="llm-rl-seq-len">Sequence length <output id="llm-rl-seq-len-value">4096</output></label>
-      <input id="llm-rl-seq-len" type="range" min="512" max="32768" step="512" value="4096">
-    </div>
-    <div class="memory-control">
-      <label for="llm-rl-batch-size">Batch size <output id="llm-rl-batch-size-value">16</output></label>
-      <input id="llm-rl-batch-size" type="range" min="1" max="128" step="1" value="16">
-    </div>
-    <div class="memory-control">
-      <label for="llm-rl-weight-dtype">Weight dtype <output id="llm-rl-weight-dtype-value">BF16 / FP16</output></label>
-      <select id="llm-rl-weight-dtype">
-        <option value="2" selected>BF16 / FP16 weights</option>
-        <option value="4">FP32 weights</option>
-      </select>
-    </div>
-  </div>
-
-  <div class="memory-bar" aria-label="Memory usage breakdown">
-    <div id="llm-rl-weights-bar" class="memory-bar-segment weights"></div>
-    <div id="llm-rl-activations-bar" class="memory-bar-segment activations"></div>
-    <div id="llm-rl-kv-cache-bar" class="memory-bar-segment kv-cache"></div>
-  </div>
-
-  <div class="memory-breakdown">
-    <div class="memory-stat">
-      <div class="memory-stat-label"><span class="memory-dot" style="background: var(--mem-blue);"></span>Weights</div>
-      <strong id="llm-rl-weights-memory">0.0 GiB</strong>
-    </div>
-    <div class="memory-stat">
-      <div class="memory-stat-label"><span class="memory-dot" style="background: var(--mem-green);"></span>Activations</div>
-      <strong id="llm-rl-activations-memory">0.0 GiB</strong>
-    </div>
-    <div class="memory-stat">
-      <div class="memory-stat-label"><span class="memory-dot" style="background: var(--mem-amber);"></span>KV cache</div>
-      <strong id="llm-rl-kv-cache-memory">0.0 GiB</strong>
-    </div>
-  </div>
-
-  <details>
-    <summary>Model shape controls</summary>
-    <div class="memory-advanced-grid">
-      <div class="memory-number">
-        <label for="llm-rl-layers">Layers</label>
-        <input id="llm-rl-layers" type="number" min="1" max="256" step="1" value="36">
-      </div>
-      <div class="memory-number">
-        <label for="llm-rl-hidden-size">Hidden size</label>
-        <input id="llm-rl-hidden-size" type="number" min="128" max="32768" step="128" value="4096">
-      </div>
-      <div class="memory-number">
-        <label for="llm-rl-query-heads">Query heads</label>
-        <input id="llm-rl-query-heads" type="number" min="1" max="256" step="1" value="32">
-      </div>
-      <div class="memory-number">
-        <label for="llm-rl-kv-heads">KV heads</label>
-        <input id="llm-rl-kv-heads" type="number" min="1" max="256" step="1" value="8">
-      </div>
-      <div class="memory-number">
-        <label for="llm-rl-intermediate-size">MLP size</label>
-        <input id="llm-rl-intermediate-size" type="number" min="128" max="131072" step="128" value="12288">
-      </div>
-    </div>
-  </details>
-
-  <p class="memory-widget-note">Approximate inference/rollout memory only. This excludes framework overhead, fragmentation, CUDA workspaces, paged KV metadata, and trainer-side gradients or optimizer states. Activation and KV-cache estimates use the constants from the formulas above; the dtype selector only changes stored model weights.</p>
-</div>
-
-<script>
-(() => {
-  const widget = document.getElementById("llm-rl-memory-widget");
-  if (!widget) return;
-
-  const paramsBillion = 8;
-  const gib = 1024 ** 3;
-  const ids = {
-    seqLen: "llm-rl-seq-len",
-    batchSize: "llm-rl-batch-size",
-    dtype: "llm-rl-weight-dtype",
-    layers: "llm-rl-layers",
-    hiddenSize: "llm-rl-hidden-size",
-    queryHeads: "llm-rl-query-heads",
-    kvHeads: "llm-rl-kv-heads",
-    intermediateSize: "llm-rl-intermediate-size",
-  };
-
-  const controls = Object.fromEntries(
-    Object.entries(ids).map(([key, id]) => [key, document.getElementById(id)])
-  );
-
-  const readPositive = (control, fallback) => {
-    const value = Number(control && control.value);
-    return Number.isFinite(value) && value > 0 ? value : fallback;
-  };
-
-  const formatNumber = (value) => new Intl.NumberFormat("en-US").format(Math.round(value));
-  const formatGiB = (bytes) => {
-    const value = bytes / gib;
-    return `${value >= 100 ? value.toFixed(0) : value.toFixed(1)} GiB`;
-  };
-
-  function setText(id, value) {
-    const el = document.getElementById(id);
-    if (el) el.textContent = value;
-  }
-
-  function setWidth(id, bytes, total) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    const pct = total > 0 ? (bytes / total) * 100 : 0;
-    el.style.width = `${pct}%`;
-    el.title = `${formatGiB(bytes)} (${pct.toFixed(1)}%)`;
-  }
-
-  function update() {
-    const seqLen = readPositive(controls.seqLen, 4096);
-    const batchSize = readPositive(controls.batchSize, 16);
-    const bytesPerParam = readPositive(controls.dtype, 2);
-    const layers = readPositive(controls.layers, 36);
-    const hiddenSize = readPositive(controls.hiddenSize, 4096);
-    const queryHeads = readPositive(controls.queryHeads, 32);
-    const kvHeads = readPositive(controls.kvHeads, 8);
-    const intermediateSize = readPositive(controls.intermediateSize, 12288);
-    const headDim = hiddenSize / queryHeads;
-
-    const weights = paramsBillion * 1e9 * bytesPerParam;
-    const activations = 4 * seqLen * batchSize * (((queryHeads + kvHeads) * headDim) + (3 * intermediateSize));
-    const kvCache = 4 * layers * batchSize * seqLen * (kvHeads * headDim);
-    const total = weights + activations + kvCache;
-
-    setText("llm-rl-seq-len-value", formatNumber(seqLen));
-    setText("llm-rl-batch-size-value", formatNumber(batchSize));
-    setText("llm-rl-weight-dtype-value", bytesPerParam === 4 ? "FP32" : "BF16 / FP16");
-    setText("llm-rl-total-memory", formatGiB(total));
-    setText("llm-rl-weights-memory", formatGiB(weights));
-    setText("llm-rl-activations-memory", formatGiB(activations));
-    setText("llm-rl-kv-cache-memory", formatGiB(kvCache));
-
-    setWidth("llm-rl-weights-bar", weights, total);
-    setWidth("llm-rl-activations-bar", activations, total);
-    setWidth("llm-rl-kv-cache-bar", kvCache, total);
-  }
-
-  Object.values(controls).forEach((control) => {
-    if (control) control.addEventListener("input", update);
-  });
-
-  update();
-})();
-</script>
+You can go even further and make sure that the weight sync doesn't pause the roll out generation. As in, while the tokens are being generated, you update the weights one at a time. So there is a possibility that within a single completion, some of the tokens are generated using some weights, older version of the weights, and some of the tokens are generated using newer version of the weights.The Prime Intellect 3 paper mentions that with Async/Pipeline GRPO, they observed a speedup of 2x as compared to the version without those optimizations.But one needs to be always careful to make sure that we are not overdoing these optimizations where there is a slight mismatch between the trainer and inference engine. Because if the difference becomes higher, then we are essentially doing off-policy learning instead of on-policy learning, which is not as robust.

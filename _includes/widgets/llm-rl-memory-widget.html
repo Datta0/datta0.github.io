@@ -1,0 +1,79 @@
+<div id="llm-rl-memory-widget" markdown="0">
+  <div class="memory-widget-header">
+    <div>
+      <h4>Qwen3-8B rollout memory sketch</h4>
+      <p class="memory-widget-subtitle">Change the rollout shape and watch where the inference-side VRAM goes.</p>
+    </div>
+    <div class="memory-total">
+      <span id="llm-rl-total-memory">0.0 GiB</span>
+      <p class="memory-widget-subtitle">total</p>
+    </div>
+  </div>
+
+  <div class="memory-controls">
+    <div class="memory-control">
+      <label for="llm-rl-seq-len">Sequence length <output id="llm-rl-seq-len-value">4096</output></label>
+      <input id="llm-rl-seq-len" type="range" min="512" max="32768" step="512" value="4096">
+    </div>
+    <div class="memory-control">
+      <label for="llm-rl-batch-size">Batch size <output id="llm-rl-batch-size-value">16</output></label>
+      <input id="llm-rl-batch-size" type="range" min="1" max="128" step="1" value="16">
+    </div>
+    <div class="memory-control">
+      <label for="llm-rl-weight-dtype">Weight dtype <output id="llm-rl-weight-dtype-value">BF16 / FP16</output></label>
+      <select id="llm-rl-weight-dtype">
+        <option value="2" selected>BF16 / FP16 weights</option>
+        <option value="4">FP32 weights</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="memory-bar" aria-label="Memory usage breakdown">
+    <div id="llm-rl-weights-bar" class="memory-bar-segment weights"></div>
+    <div id="llm-rl-activations-bar" class="memory-bar-segment activations"></div>
+    <div id="llm-rl-kv-cache-bar" class="memory-bar-segment kv-cache"></div>
+  </div>
+
+  <div class="memory-breakdown">
+    <div class="memory-stat">
+      <div class="memory-stat-label"><span class="memory-dot" style="background: var(--mem-blue);"></span>Weights</div>
+      <strong id="llm-rl-weights-memory">0.0 GiB</strong>
+    </div>
+    <div class="memory-stat">
+      <div class="memory-stat-label"><span class="memory-dot" style="background: var(--mem-green);"></span>Activations</div>
+      <strong id="llm-rl-activations-memory">0.0 GiB</strong>
+    </div>
+    <div class="memory-stat">
+      <div class="memory-stat-label"><span class="memory-dot" style="background: var(--mem-amber);"></span>KV cache</div>
+      <strong id="llm-rl-kv-cache-memory">0.0 GiB</strong>
+    </div>
+  </div>
+
+  <details>
+    <summary>Model shape controls</summary>
+    <div class="memory-advanced-grid">
+      <div class="memory-number">
+        <label for="llm-rl-layers">Layers</label>
+        <input id="llm-rl-layers" type="number" min="1" max="256" step="1" value="36">
+      </div>
+      <div class="memory-number">
+        <label for="llm-rl-hidden-size">Hidden size</label>
+        <input id="llm-rl-hidden-size" type="number" min="128" max="32768" step="128" value="4096">
+      </div>
+      <div class="memory-number">
+        <label for="llm-rl-query-heads">Query heads</label>
+        <input id="llm-rl-query-heads" type="number" min="1" max="256" step="1" value="32">
+      </div>
+      <div class="memory-number">
+        <label for="llm-rl-kv-heads">KV heads</label>
+        <input id="llm-rl-kv-heads" type="number" min="1" max="256" step="1" value="8">
+      </div>
+      <div class="memory-number">
+        <label for="llm-rl-intermediate-size">MLP size</label>
+        <input id="llm-rl-intermediate-size" type="number" min="128" max="131072" step="128" value="12288">
+      </div>
+    </div>
+  </details>
+
+  <p class="memory-widget-note">Approximate inference/rollout memory only. This excludes framework overhead, fragmentation, CUDA workspaces, paged KV metadata, and trainer-side gradients or optimizer states. Activation and KV-cache estimates use the constants from the formulas above; the dtype selector only changes stored model weights.</p>
+</div>
