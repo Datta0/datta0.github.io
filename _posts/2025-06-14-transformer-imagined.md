@@ -4,7 +4,7 @@ description: An intuitive build up to Attention and Transformer
 author: datta0
 date: 2025-06-14T14:30:00+05:30
 categories: [Attention, Transformer, FFNN, Math]
-tags: [Attention, Transformer, FFNN, Math]
+tags: [LLM, Transformer, Attention, FFN, Math]
 render_with_liquid: false
 math: true
 image:

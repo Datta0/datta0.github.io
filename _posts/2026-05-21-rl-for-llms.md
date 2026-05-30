@@ -4,7 +4,7 @@ description: A brief introduction to reinforcement learning for LLMs
 author: datta0
 date: 2026-05-21T23:00:00+05:30
 categories: [LLM, Fine-tuning, RL, GRPO, PPO, Math]
-tags: [LLM, Fine-tuning, RL, GRPO, PPO, Math]
+tags: [LLM, RL, RLHF, PPO, DPO, GRPO, Math]
 render_with_liquid: false
 math: true
 image:

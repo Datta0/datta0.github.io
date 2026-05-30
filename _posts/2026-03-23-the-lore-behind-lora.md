@@ -4,7 +4,7 @@ description: LoRA imagined from the ground up
 author: datta0
 date: 2026-03-23T14:30:00+05:30
 categories: [LoRA, Transformer, Training, Fine-tuning, Math]
-tags: [LoRA, Transformer, Training, Fine-tuning, Math]
+tags: [LLM, LoRA, PEFT, Fine-tuning, Training, Math]
 render_with_liquid: false
 math: true
 image:

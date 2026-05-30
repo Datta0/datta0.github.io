@@ -4,7 +4,7 @@ description: A practical guide to data, tensor, and pipeline parallelism for LLM
 date: '2025-07-06 16:33:31 +0530'
 author: datta0
 categories: [Attention, Transformer, FFNN, GPU, Parallelism, vLLM, Inference]
-tags: [Attention, Transformer, FFNN, GPU, Parallelism, vLLM, Tensor Parallelism, Pipeline Parallelism, Data Parallelism]
+tags: [LLM, Systems, GPU, Parallelism, Inference, Training, vLLM]
 pin: false
 toc: true
 render_with_liquid: false

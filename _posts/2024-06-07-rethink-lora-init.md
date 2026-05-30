@@ -4,7 +4,7 @@ description: A better initialization for LoRA to make convergence faster
 author: datta0
 date: 2024-06-07T03:06:01+00:00
 categories: [LoRA, Fine-tuning, LLM]
-tags: [LoRA, Fine-tuning, LLM]
+tags: [LLM, LoRA, PEFT, Fine-tuning, Training]
 render_with_liquid: false
 math: true
 image:

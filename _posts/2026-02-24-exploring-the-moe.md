@@ -4,7 +4,7 @@ description: An intuitive build up to Mixture of Experts
 author: datta0
 date: 2026-02-24T14:30:00+05:30
 categories: [Mixture of Experts, Transformer, FFNN, Math]
-tags: [Mixture of Experts, Transformer, FFNN, Math]
+tags: [LLM, Transformer, Mixture of Experts, FFN, Architecture, Math]
 render_with_liquid: false
 math: true
 image:

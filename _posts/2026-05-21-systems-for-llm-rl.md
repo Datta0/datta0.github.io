@@ -4,7 +4,7 @@ description: Foray into the systems challenges and approaches for LLM RL
 author: datta0
 date: 2026-05-30T00:00:00+05:30
 categories: [LLM, Fine-tuning, RL, Math, Systems, GPU]
-tags: [LLM, Fine-tuning, RL, Math, Systems, GPU]
+tags: [LLM, RL, Systems, GPU, Training, Inference, GRPO]
 math: true
 image:
   path: /assets/img/blogs/systems_for_llm_rl/systems_for_llm_rl_header_wide.jpg

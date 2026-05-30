@@ -4,7 +4,7 @@ description: Fast and memory efficient exact attention
 author: datta0
 date: 2026-04-12T14:30:00+05:30
 categories: [Transformer, Attention, GPU, Kernels, Training, Fine-tuning, Math]
-tags: [Transformer, Attention, GPU, Kernels, Training, Fine-tuning, Math]
+tags: [LLM, Transformer, Attention, GPU, Kernels, Systems, Math]
 render_with_liquid: false
 math: true
 image:
