@@ -8,7 +8,7 @@ tags: [LLM, Fine-tuning, RL, Math, Systems, GPU]
 math: true
 image:
   path: /assets/img/blogs/systems_for_llm_rl/systems_for_llm_rl_header_wide.jpg
-  alt: Systems diagram for LLM reinforcement learning with rollout, training, and weight sync lanes
+  alt: Collage of SFT versus RL memory, async rollout scheduling, and GPU server systems for LLM RL
   no_bg: true
 ---
 
@@ -49,6 +49,11 @@ Though this does come with some benefits, it also comes with its own challenges.
 - Reference model needs its own share
 - In cases like PPO, you also need a value model and its own optimisation
 - Once you introduce a separate process to generate rollouts (like vLLM), you need to make sure it stays up to date with the weights.
+
+At a high level, this is why online RL feels much heavier than SFT. SFT mostly keeps one training stack alive: model weights, activations, gradients, and optimizer state. GRPO/RL adds a rollout engine that must generate thinking traces/completions, maintain inference-time state like KV cache, score samples with rewards/verifiers, and then sync updated trainer weights back into the inference engine. So the problem is not just "more memory"; it is also coordinating two systems that both need a fresh enough copy of the same policy.
+
+![SFT versus GRPO systems](/assets/img/blogs/systems_for_llm_rl/sft_vs_rl.jpg)
+*Compared with SFT, online RL adds rollout memory and a weight-sync path between trainer and inference.*
 
 Let's go through this methodically and try to analyse the memory requirement of the same.
 
