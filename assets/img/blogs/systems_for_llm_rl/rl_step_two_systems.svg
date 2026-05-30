@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="520" viewBox="0 0 960 520" role="img" aria-labelledby="title desc">
+  <title id="title">Online RL step split between inference and training systems</title>
+  <desc id="desc">Dark vector diagram for the Systems for LLM RL blog.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#9aa7bd"/>
+    </marker>
+    <linearGradient id="memfade" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#172033"/>
+      <stop offset="1" stop-color="#0b1020"/>
+    </linearGradient>
+  </defs>
+  <rect width="100%" height="100%" fill="#05070b"/>
+  <text x="34" y="48" fill="#eef2ff" font-size="26" font-family="Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-weight="750" text-anchor="start">Online RL lifecycle</text>
+  <text x="34" y="74" fill="#9aa7bd" font-size="14" font-family="Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-weight="450" text-anchor="start">The systems alternate between rollout generation and policy updates.</text>
+  <rect x="70" y="170" width="125" height="92" rx="7" fill="#0f172a" stroke="#60a5fa" stroke-width="2" opacity="1"/>
+  <text x="86" y="198" fill="#eef2ff" font-size="17" font-family="Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-weight="700" text-anchor="start">sync weights</text>
+  <text x="86" y="222" fill="#9aa7bd" font-size="14" font-family="Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-weight="450" text-anchor="start">trainer -&gt; vLLM</text>
+  <line x1="195" y1="216" x2="240" y2="216" stroke="#9aa7bd" stroke-width="2.2" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <rect x="250" y="170" width="125" height="92" rx="7" fill="#0f172a" stroke="#47d16c" stroke-width="2" opacity="1"/>
+  <text x="266" y="198" fill="#eef2ff" font-size="17" font-family="Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-weight="700" text-anchor="start">rollouts</text>
+  <text x="266" y="222" fill="#9aa7bd" font-size="14" font-family="Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-weight="450" text-anchor="start">sample completions</text>
+  <line x1="375" y1="216" x2="420" y2="216" stroke="#9aa7bd" stroke-width="2.2" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <rect x="430" y="170" width="125" height="92" rx="7" fill="#0f172a" stroke="#c084fc" stroke-width="2" opacity="1"/>
+  <text x="446" y="198" fill="#eef2ff" font-size="17" font-family="Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-weight="700" text-anchor="start">forward loss</text>
+  <text x="446" y="222" fill="#9aa7bd" font-size="14" font-family="Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-weight="450" text-anchor="start">logprobs, rewards</text>
+  <line x1="555" y1="216" x2="600" y2="216" stroke="#9aa7bd" stroke-width="2.2" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <rect x="610" y="170" width="125" height="92" rx="7" fill="#0f172a" stroke="#22d3ee" stroke-width="2" opacity="1"/>
+  <text x="626" y="198" fill="#eef2ff" font-size="17" font-family="Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-weight="700" text-anchor="start">backward</text>
+  <text x="626" y="222" fill="#9aa7bd" font-size="14" font-family="Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-weight="450" text-anchor="start">gradients</text>
+  <line x1="735" y1="216" x2="780" y2="216" stroke="#9aa7bd" stroke-width="2.2" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <rect x="790" y="170" width="125" height="92" rx="7" fill="#0f172a" stroke="#f472b6" stroke-width="2" opacity="1"/>
+  <text x="806" y="198" fill="#eef2ff" font-size="17" font-family="Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-weight="700" text-anchor="start">optimizer step</text>
+  <text x="806" y="222" fill="#9aa7bd" font-size="14" font-family="Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-weight="450" text-anchor="start">new policy</text>
+  <path d="M 855 158 C 900 92 108 92 86 158" fill="none" stroke="#60a5fa" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="7 7" marker-end="url(#arrow)"/>
+  <text x="480" y="106" fill="#60a5fa" font-size="14" font-family="Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-weight="450" text-anchor="middle">repeat with fresher weights</text>
+  <rect x="246" y="346" width="468" height="48" rx="7" fill="#0b1120" stroke="#263244" stroke-width="1.2" opacity="1"/>
+  <text x="480" y="376" fill="#9aa7bd" font-size="14" font-family="Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif" font-weight="450" text-anchor="middle">Inference and training want the same weights, but not at the same time.</text>
+</svg>
