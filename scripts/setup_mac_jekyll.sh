@@ -7,6 +7,9 @@ Usage:
   bash scripts/setup_mac_jekyll.sh [options]
 
 Options:
+  --repo URL          Clone/update this repo, then run setup from that checkout.
+  --branch BRANCH     Branch to use with --repo. Default: rl_for_llm.
+  --dir DIR           Checkout directory for --repo. Default: ~/datta0.github.io.
   --no-serve          Install dependencies but do not start Jekyll.
   --no-open           Do not open the local site in the browser.
   --port PORT         Port for local server. Default: first free port from 4000.
@@ -18,43 +21,66 @@ Options:
 
 What it does:
   1. Checks macOS command line tools.
-  2. Uses Homebrew ruby@3.4 when system Ruby is too old/new.
-  3. Installs bundler and gems into a Ruby-specific local bundle path.
-  4. Runs `bundle exec jekyll serve`.
+  2. Optionally clones/updates the requested branch.
+  3. Uses Homebrew ruby@3.4 when system Ruby is too old/new.
+  4. Installs bundler and gems into a Ruby-specific local bundle path.
+  5. Runs `bundle exec jekyll serve`.
 EOF
 }
 
+clone_repo=""
+clone_branch="rl_for_llm"
+clone_dir=""
 serve=1
 open_browser=1
 port=""
 livereload_port=""
 host="127.0.0.1"
 install_homebrew=0
+forwarded_args=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --repo)
+      clone_repo="${2:?Missing value for --repo}"
+      shift 2
+      ;;
+    --branch)
+      clone_branch="${2:?Missing value for --branch}"
+      shift 2
+      ;;
+    --dir)
+      clone_dir="${2:?Missing value for --dir}"
+      shift 2
+      ;;
     --no-serve)
       serve=0
+      forwarded_args+=("$1")
       shift
       ;;
     --no-open)
       open_browser=0
+      forwarded_args+=("$1")
       shift
       ;;
     --port)
       port="${2:?Missing value for --port}"
+      forwarded_args+=("$1" "$2")
       shift 2
       ;;
     --livereload-port)
       livereload_port="${2:?Missing value for --livereload-port}"
+      forwarded_args+=("$1" "$2")
       shift 2
       ;;
     --host)
       host="${2:?Missing value for --host}"
+      forwarded_args+=("$1" "$2")
       shift 2
       ;;
     --install-homebrew)
       install_homebrew=1
+      forwarded_args+=("$1")
       shift
       ;;
     -h|--help)
@@ -74,6 +100,44 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   exit 1
 fi
 
+if ! xcode-select -p >/dev/null 2>&1; then
+  echo "macOS command line tools are missing."
+  echo "A dialog will open. Install them, then rerun this script."
+  xcode-select --install || true
+  exit 1
+fi
+
+if [[ -n "$clone_repo" ]]; then
+  if ! command -v git >/dev/null 2>&1; then
+    echo "git is required. Install macOS command line tools, then rerun this script." >&2
+    exit 1
+  fi
+
+  if [[ -z "$clone_dir" ]]; then
+    clone_dir="$HOME/datta0.github.io"
+  fi
+
+  if [[ -d "$clone_dir/.git" ]]; then
+    echo "Updating existing checkout: $clone_dir"
+    git -C "$clone_dir" fetch origin "$clone_branch"
+    if git -C "$clone_dir" show-ref --verify --quiet "refs/heads/$clone_branch"; then
+      git -C "$clone_dir" checkout "$clone_branch"
+    else
+      git -C "$clone_dir" checkout -b "$clone_branch" "origin/$clone_branch"
+    fi
+    git -C "$clone_dir" pull --ff-only origin "$clone_branch"
+  elif [[ -e "$clone_dir" ]]; then
+    echo "$clone_dir exists but is not a git checkout. Choose another --dir." >&2
+    exit 1
+  else
+    echo "Cloning $clone_repo branch $clone_branch into $clone_dir"
+    mkdir -p "$(dirname "$clone_dir")"
+    git clone --branch "$clone_branch" --single-branch "$clone_repo" "$clone_dir"
+  fi
+
+  exec bash "$clone_dir/scripts/setup_mac_jekyll.sh" "${forwarded_args[@]}"
+fi
+
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/.." && pwd)"
 cd "$repo_root"
@@ -86,13 +150,6 @@ fi
 echo "Repo: $repo_root"
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "Branch: $(git branch --show-current 2>/dev/null || echo unknown)"
-fi
-
-if ! xcode-select -p >/dev/null 2>&1; then
-  echo "macOS command line tools are missing."
-  echo "A dialog will open. Install them, then rerun this script."
-  xcode-select --install || true
-  exit 1
 fi
 
 ensure_brew_path() {
