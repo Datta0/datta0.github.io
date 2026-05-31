@@ -16,13 +16,13 @@ Options:
   --livereload-port PORT
                      Port for LiveReload. Default: first free port from 35729.
   --host HOST         Host for local server. Default: 127.0.0.1.
-  --install-homebrew  Install Homebrew if it is missing.
+  --install-homebrew  Install Homebrew/Linuxbrew if Ruby is missing or too old.
   -h, --help          Show this help.
 
 What it does:
-  1. Checks macOS command line tools.
+  1. Detects macOS/Linux and installs the basic local dependencies it needs.
   2. Optionally clones/updates the requested branch.
-  3. Uses Homebrew ruby@3.4 when system Ruby is too old/new.
+  3. Uses a valid system Ruby or Homebrew/Linuxbrew ruby@3.4 when needed.
   4. Installs bundler and gems into a Ruby-specific local bundle path.
   5. Runs `bundle exec jekyll serve`.
 EOF
@@ -95,21 +95,70 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "$(uname -s)" != "Darwin" ]]; then
-  echo "This script is intended for macOS." >&2
+os_name="$(uname -s)"
+if [[ "$os_name" != "Darwin" && "$os_name" != "Linux" ]]; then
+  echo "This script supports macOS and Linux. Detected: $os_name" >&2
   exit 1
 fi
 
-if ! xcode-select -p >/dev/null 2>&1; then
-  echo "macOS command line tools are missing."
-  echo "A dialog will open. Install them, then rerun this script."
-  xcode-select --install || true
-  exit 1
+sudo_cmd=()
+if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
+  sudo_cmd=(sudo)
+fi
+
+install_linux_packages() {
+  if [[ "$os_name" != "Linux" ]]; then
+    return 0
+  fi
+
+  if [[ "${#sudo_cmd[@]}" -gt 0 ]] && ! command -v sudo >/dev/null 2>&1; then
+    echo "sudo is required to install Linux packages. Install dependencies manually or rerun as root." >&2
+    return 1
+  fi
+
+  if command -v apt-get >/dev/null 2>&1; then
+    "${sudo_cmd[@]}" apt-get update
+    "${sudo_cmd[@]}" apt-get install -y build-essential procps curl file git ruby-full ruby-dev zlib1g-dev libffi-dev libyaml-dev
+  elif command -v dnf >/dev/null 2>&1; then
+    "${sudo_cmd[@]}" dnf install -y gcc gcc-c++ make procps-ng curl file git ruby ruby-devel zlib-devel libffi-devel libyaml-devel openssl-devel
+  elif command -v yum >/dev/null 2>&1; then
+    "${sudo_cmd[@]}" yum install -y gcc gcc-c++ make procps-ng curl file git ruby ruby-devel zlib-devel libffi-devel libyaml-devel openssl-devel
+  elif command -v pacman >/dev/null 2>&1; then
+    "${sudo_cmd[@]}" pacman -Sy --needed --noconfirm base-devel procps-ng curl file git ruby zlib libffi libyaml openssl
+  elif command -v zypper >/dev/null 2>&1; then
+    "${sudo_cmd[@]}" zypper install -y gcc gcc-c++ make procps curl file git ruby ruby-devel zlib-devel libffi-devel libyaml-devel libopenssl-devel
+  else
+    cat >&2 <<'EOF'
+Could not detect a supported Linux package manager.
+Please install these first: git, curl, file, procps, gcc/make, Ruby >= 3.1, ruby-dev.
+EOF
+    return 1
+  fi
+}
+
+if [[ "$os_name" == "Darwin" ]]; then
+  if ! xcode-select -p >/dev/null 2>&1; then
+    echo "macOS command line tools are missing."
+    echo "A dialog will open. Install them, then rerun this script."
+    xcode-select --install || true
+    exit 1
+  fi
+elif [[ "$os_name" == "Linux" ]]; then
+  missing_basic=0
+  for cmd in git curl file make gcc; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+      missing_basic=1
+    fi
+  done
+  if [[ "$missing_basic" -eq 1 ]]; then
+    echo "Installing Linux basics..."
+    install_linux_packages
+  fi
 fi
 
 if [[ -n "$clone_repo" ]]; then
   if ! command -v git >/dev/null 2>&1; then
-    echo "git is required. Install macOS command line tools, then rerun this script." >&2
+    echo "git is required. Install command line tools, then rerun this script." >&2
     exit 1
   fi
 
@@ -157,32 +206,14 @@ ensure_brew_path() {
     eval "$(/opt/homebrew/bin/brew shellenv)"
   elif [[ -x /usr/local/bin/brew ]]; then
     eval "$(/usr/local/bin/brew shellenv)"
+  elif [[ -x /home/linuxbrew/.linuxbrew/bin/brew ]]; then
+    eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+  elif [[ -x "$HOME/.linuxbrew/bin/brew" ]]; then
+    eval "$("$HOME/.linuxbrew/bin/brew" shellenv)"
   fi
 }
 
 ensure_brew_path
-
-if ! command -v brew >/dev/null 2>&1; then
-  if [[ "$install_homebrew" -eq 1 ]]; then
-    echo "Installing Homebrew..."
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    ensure_brew_path
-  else
-    cat >&2 <<'EOF'
-Homebrew is not installed.
-
-Install it first:
-  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-Then rerun:
-  bash scripts/setup_mac_jekyll.sh
-
-Or let this script install it:
-  bash scripts/setup_mac_jekyll.sh --install-homebrew
-EOF
-    exit 1
-  fi
-fi
 
 ruby_formula="ruby@3.4"
 if [[ -f .ruby-version ]]; then
@@ -190,21 +221,60 @@ if [[ -f .ruby-version ]]; then
   ruby_formula="ruby@${ruby_version%.*}"
 fi
 
+ruby_version_ok() {
+  command -v ruby >/dev/null 2>&1 &&
+    ruby -e 'v = Gem::Version.new(RUBY_VERSION); exit(v >= Gem::Version.new("3.1") && v < Gem::Version.new("4.0") ? 0 : 1)' >/dev/null 2>&1
+}
+
 ruby_ok=0
-if command -v ruby >/dev/null 2>&1; then
-  if ruby -e 'v = Gem::Version.new(RUBY_VERSION); exit(v >= Gem::Version.new("3.1") && v < Gem::Version.new("4.0") ? 0 : 1)' >/dev/null 2>&1; then
+if ruby_version_ok; then
+  ruby_ok=1
+elif [[ "$os_name" == "Linux" ]]; then
+  echo "Trying Linux package manager Ruby first..."
+  install_linux_packages
+  if ruby_version_ok; then
     ruby_ok=1
   fi
 fi
 
 if [[ "$ruby_ok" -ne 1 ]]; then
-  echo "Installing $ruby_formula via Homebrew..."
+  if ! command -v brew >/dev/null 2>&1; then
+    if [[ "$install_homebrew" -eq 1 ]]; then
+      if [[ "$os_name" == "Linux" ]]; then
+        echo "Installing Linux prerequisites for Linuxbrew..."
+        install_linux_packages
+      fi
+      echo "Installing Homebrew/Linuxbrew..."
+      /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+      ensure_brew_path
+    else
+      cat >&2 <<EOF
+Ruby >= 3.1 and < 4.0 was not found.
+
+This script can install $ruby_formula via Homebrew/Linuxbrew:
+  bash scripts/setup_mac_jekyll.sh --install-homebrew
+
+If you are running from GitHub:
+  curl -fsSL <script-url> | bash -s -- --repo <repo-url> --branch <branch> --install-homebrew
+EOF
+      exit 1
+    fi
+  fi
+
+  echo "Installing $ruby_formula via Homebrew/Linuxbrew..."
   brew install "$ruby_formula"
 fi
 
-if brew --prefix "$ruby_formula" >/dev/null 2>&1; then
+if command -v brew >/dev/null 2>&1 && brew --prefix "$ruby_formula" >/dev/null 2>&1; then
   ruby_prefix="$(brew --prefix "$ruby_formula")"
   export PATH="$ruby_prefix/bin:$PATH"
+fi
+
+if [[ "$os_name" == "Linux" ]]; then
+  if ! ruby -rrbconfig -e 'exit File.directory?(RbConfig::CONFIG["rubyhdrdir"]) ? 0 : 1' >/dev/null 2>&1; then
+    echo "Ruby development headers are missing. Installing Linux Ruby build dependencies..."
+    install_linux_packages
+  fi
 fi
 
 gem_bindir="$(ruby -rrubygems -e 'print Gem.bindir')"
@@ -246,7 +316,13 @@ if [[ "$serve" -eq 0 ]]; then
 fi
 
 port_is_free() {
-  ! lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1
+  if command -v lsof >/dev/null 2>&1; then
+    ! lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1
+  elif command -v ss >/dev/null 2>&1; then
+    ! ss -ltn "sport = :$1" | grep -q LISTEN
+  else
+    ruby -rsocket -e 's = TCPServer.new("127.0.0.1", ARGV[0].to_i); s.close' "$1" >/dev/null 2>&1
+  fi
 }
 
 if [[ -z "$port" ]]; then
@@ -298,7 +374,11 @@ if [[ "$open_browser" -eq 1 ]]; then
   (
     for _ in $(seq 1 60); do
       if curl -fsS "$url" >/dev/null 2>&1; then
-        open "$url" >/dev/null 2>&1 || true
+        if [[ "$os_name" == "Darwin" ]]; then
+          open "$url" >/dev/null 2>&1 || true
+        elif command -v xdg-open >/dev/null 2>&1; then
+          xdg-open "$url" >/dev/null 2>&1 || true
+        fi
         exit 0
       fi
       sleep 1
