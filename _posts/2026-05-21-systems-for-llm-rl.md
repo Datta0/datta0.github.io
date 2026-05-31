@@ -41,7 +41,7 @@ Most of the RL algorithms need samples generated from the model we're optimising
 
 In the case of PPO and GRPO, because we generate samples from the model that is being optimized, they come under online reinforcement learning. But we do accept some degree of off-policy drift. In the case of a chess-playing agent, on-policy learning is where it generates the moves and tries to learn from them. Off-policy is basically watching someone else generate the moves and learning from them. PPO is somewhere in between, where you generate one sequence of moves and try to do multiple gradient updates on it, taking advantage of [importance sampling](https://datta0.github.io/posts/rl-for-llms/#the-importance-sampling-correction).
 
-As we previously discussed, unlike SFT, the generation phase involves multiple forward passes through the model. So it is safe to assume that a large fraction of each on-policy RL training step, often the majority at higher sequence lengths, goes towards rollout generation. So it is very important to optimize inference both from a speed standpoint and from a memory usage standpoint. Many frameworks rely on hyper-optimized inference engines like [vLLM](https://vllm.ai/) or [SGLang](https://sgl-project.github.io/) and offload tasks to them.
+As we previously discussed, unlike SFT, the generation phase involves multiple forward passes through the model. So it is safe to assume that a large fraction of each on-policy RL training step, often the majority at higher sequence lengths, goes towards rollout generation. So it is very important to optimize inference both from a speed standpoint and from a memory usage standpoint. Many frameworks rely on hyper-optimized inference engines like [vLLM](https://vllm.ai/) or [SGLang](https://sgl-project.github.io/) and delegate rollout generation to them.
 
 Though this does come with some benefits, it also comes with its own challenges. 
 - Inference server, whether colocated (on same GPU(s)) or running standalone (on different GPUs), takes up GPU memory. 
@@ -63,21 +63,25 @@ For training these are the biggest components that consume VRAM. Assuming that t
 - Gradients: `n` billion = 2n GB in BF16
 - Optimizer states: 2 per param for Adam: 2 moving averages (moments). `2n` billion = 8n GB in FP32 (typically higher precision)
 - Master weights: `n` billion = 4n GB, sometimes stored to perform accumulation with the optimiser.
-- Activations: Assuming you do activation checkpointing and use techniques like flash attention, this won't be much compared to the rest.
+- Activations: Assuming you do activation checkpointing and use techniques like flash attention, this is often smaller than optimizer state at moderate sequence lengths, but it can still become significant for long-context RL.
 
 Do note that you can also offload optimizer states and gradients to CPU as well. But any offload is bound to cause slowdowns. For activations, you offload some, persist some, recalculate some, etc.
 
 For inference server:
-Assuming that you have `l` layers, $n_h$ query heads, $n_{kv}$ key-value heads each of dimension `hs`, and MLP dimension `i` for sequence length `s` and batch size `b`...
+Assuming that you have `l` layers, $n_h$ query heads, $n_{kv}$ key-value heads each of dimension `hs`, hidden size `h`, and MLP dimension `i` for sequence length `s` and batch size `b`...
 - Weights: `n` billion = 2n GB in BF16
 - Activations: Approximately $4 \times s \times b \times ((n_h + n_{kv}) \times hs + 3 \times i )$ bytes
-- KVCache: Each attn head has its own and so does each layer: $4 \times l \times b \times s \times (n_{kv} \times hs)$ bytes
+- KVCache: Each layer stores key and value vectors for each KV head: $4 \times l \times b \times s \times (n_{kv} \times hs)$ bytes in BF16.
 
 So let's take the example of [Qwen3-8B](https://huggingface.co/Qwen/Qwen3-8B/blob/main/config.json), which has 36 layers, 32 attention heads, 8 KV heads, a hidden size of 4096, and an MLP dimension of 12288. This is how the memory requirement looks like:
 
 {% include widgets/llm-rl-memory-widget.html %}
 
 Even if you have multiple GPUs, this much memory requirement is a lot to deal with. So we need to look for ways to optimise this.
+
+### The setup
+
+Imagine an organization working on a software solution. There are two types of teams, the backend engineers and the frontend engineers. Both are independent on each other to deliver the product. But you as the in-charge of the office space have limited seats/workstations. Backend Engineers we would like to work at night and the front-end engineers would prefer working during the day. But because of the interdependency, they have to share the code base often. In this case, do you really need two separate office spaces for backend engineers and frontend engineers? You can time schedule them so that there is very little collision and you can get away with needing only whatever the maximum of the two is.
 
 ## The lifecycle
 First, let's see what steps are involved in this setup so that we can identify potential places to improve.
@@ -91,15 +95,11 @@ First, let's see what steps are involved in this setup so that we can identify p
 
 ## Shut it down, spin it back up
 
-If you look closely, the trainer phase and inference engine phase sequentially follow each other with no overlap. That should give us some idea of what we can do. If we can start up and tear down the inference server instantaneously, we can free up the space occupied by `weights + activations + KVCache` so that space can be used for optimiser states and gradients.
-
-Before going further, it helps to separate two mechanisms that are easy to conflate:
-- **Sharding (FSDP / DeepSpeed ZeRO):** each rank only ever holds `1/N` of the weights, gradients and optimiser states. This is always on and effectively free. It is the *primary* way training memory is kept in check, not offloading.
-- **Host (CPU) offload:** moving that `1/N` shard across PCIe into CPU RAM. This is a separate, opt-in toggle. It frees HBM, but PCIe is slow, so round-tripping optimiser state (~12 bytes/param for Adam) every step costs real wall-clock time.
+So, how do you go about optimizing this? Assume that you have a single GPU where you have to slot in both the inference engine and the trainer. The question you need to ask yourself is what is the inference engine doing when the trainer is running? And what is the trainer doing when the inference engine is running? If you look closely, the trainer phase and inference engine phase sequentially follow each other with no overlap. That should give us some idea of what we can do. If we can start up and tear down the inference server instantaneously, we can free up the space occupied by `weights + activations + KVCache` so that space can be used for optimiser states and gradients.
 
 Now once the forward and backward passes finish, you *can* offload the trainer's resident shard to CPU RAM, assuming fast enough CPU-GPU communication and enough host memory. But whether this actually happens depends heavily on the topology:
-- **Colocated** (trainer and inference share the same GPUs): offloading the trainer and/or sleeping vLLM is *necessary* because both contend for the same HBM. The swap happens at the rollout↔train phase boundary, not per micro-batch.
-- **Disaggregated** (trainer and inference on different GPUs): no swap is needed at all. The inference GPUs simply never hold trainer state, and any CPU offload there is a static memory-pressure choice unrelated to the RL lifecycle.
+- **Colocated** (trainer and inference share the same GPUs): offloading the trainer and/or sleeping vLLM is *necessary* because both contend for the same VRAM. The swap happens at the rollout↔train phase boundary, not per micro-batch. The shared office space analogy
+- **Disaggregated** (trainer and inference on different GPUs): no swap is needed at all. The inference GPUs simply never hold trainer state, and any CPU offload there is a static memory-pressure choice unrelated to the RL lifecycle. Welp, you're rich that you have multiple office spaces.
 
 I'd leave it as an exercise for you to think about why/how this works when using `gradient_accumulation_steps` and/or when `trainer_batch_size` and `inference_batch_size` are not the same. Hint: you might need to repeat the same thing multiple times, but smartly.
 
@@ -132,17 +132,17 @@ The middle ground is [Sleep Mode](https://docs.vllm.ai/en/latest/features/sleep_
 There are two sleep modes that vLLM exposes:
 - Level 1: Offload model weights to CPU. Discard KVCache
   This took ~30s to sleep and ~0.6s to wake up in the benchmark I am referring to.
-- Level 2: Discard model weights and KVCache. No CPU offload
+- Level 2: Discard model weights and KVCache. No CPU backup for the weights, though small model buffers may remain on CPU.
   This took ~0.24s to sleep and ~0.4s to wake up in the same benchmark.
 
 For full finetuning RL workloads, we can choose to do Level 2 because the model weights are generally updated between sleep and wakeup, and we need the inference engine to have the latest weights anyway. The exception is LoRA, where you want the shared base weights to stay resident (more on that [later](#lora---weight-sharing)).
 
 ## Chunked loss calculation
 
-When you have a model like Qwen3-8B for GRPO, assume that you have a sequence length of 16K and a batch size of 4. In BF16, the memory usage looks like:
+When you have a model like Qwen3-8B for GRPO, assume that you have a sequence length of 16K and a batch size of 4. Qwen3-8B has a vocab size of 151,936. In BF16, the memory usage looks like:
 
 - **Hidden States**: `bsz * hidden_size * seq_len = 16384 * 4096 * 4 * 2 bytes = 0.5 GiB`
-- **Logits**: `bsz * vocab_size * seq_len = 16384 * 128K * 4 * 2 bytes = 16 GiB`
+- **Logits**: `bsz * vocab_size * seq_len = 16384 * 151936 * 4 * 2 bytes = 18.6 GiB`
 
 So if you materialise the logits, you're going to pay a hefty price. The moral is to not materialise the logits. Hidden states are much easier on GPU memory, and we need to store or recompute them anyway because every subsequent layer works with the same shape/size.
 
@@ -186,25 +186,28 @@ The loss is just a sum over the tokens of a sequence which is then aggregated ov
 {: .prompt-tip }
 
 ```python
-# Simplified pseudocode: real implementations gather only sampled-token logprobs.
+# Simplified pseudocode: compute full-vocab logits only for a token chunk,
+# then gather only the sampled-token logprobs needed for the policy ratio.
 # hidden_states: (bsz*seq_len, hidden_dim)
 # lm_head: (hidden_size, vocab_size)
-def batched_chunked_loss(old_hidden_states, new_hidden_states, lm_head):
+def batched_chunked_loss(old_hidden_states, new_hidden_states, lm_head, sampled_tokens, advantages):
   total_loss = 0
   old_hidden_states = old_hidden_states.reshape(-1, mini_batch_size, hidden_dim)
   new_hidden_states = new_hidden_states.reshape(-1, mini_batch_size, hidden_dim)
-  for old_mini_batch, new_mini_batch in zip(old_hidden_states, new_hidden_states):
+  sampled_tokens = sampled_tokens.reshape(-1, mini_batch_size, 1)
+  advantages = advantages.reshape(-1, mini_batch_size, 1)
+  for old_mini_batch, new_mini_batch, mini_tokens, mini_advantages in zip(old_hidden_states, new_hidden_states, sampled_tokens, advantages):
     # Process each mini-batch
     # (mini_batch_size, hidden_dim) @ (hidden_dim, vocab_size) -> (mini_batch_size, vocab_size)
     old_mini_logits = old_mini_batch @ lm_head  # (mini_batch_size, vocab_size)
-    old_mini_logps = F.log_softmax(old_mini_logits, dim=-1)  # (mini_batch_size, vocab_size)
+    old_mini_logps = F.log_softmax(old_mini_logits, dim=-1).gather(-1, mini_tokens)  # (mini_batch_size, 1)
     new_mini_logits = new_mini_batch @ lm_head  # (mini_batch_size, vocab_size)
-    new_mini_logps = F.log_softmax(new_mini_logits, dim=-1)  # (mini_batch_size, vocab_size)
-    log_ratio = new_mini_logps - old_mini_logps  # (mini_batch_size, vocab_size)
-    mini_batch_loss = clip(log_ratio, advantages).sum(dim=-1) # (mini_batch_size, 1)
+    new_mini_logps = F.log_softmax(new_mini_logits, dim=-1).gather(-1, mini_tokens)  # (mini_batch_size, 1)
+    log_ratio = new_mini_logps - old_mini_logps  # (mini_batch_size, 1)
+    mini_batch_loss = clip(log_ratio, mini_advantages).sum()
     total_loss += mini_batch_loss
     pass
-  return total_loss # (bsz * seq_len, 1)
+  return total_loss
 ```
 
 Another optimization is to do the LM head multiplication in chunks where you split the LM head itself. But this would not directly resolve into any individual unit of the loss. So the accumulation would be slightly more involved. If you think about it, this is very similar to how we do [Column Parallel vs Row Parallel in Tensor Parallelism](https://datta0.github.io/posts/understanding-multi-gpu-parallelism-paradigms/#tensor-parallelism). Also for how online softmax is implemented, please refer to the same in [The MathemaTricks behind Flash Attention](https://datta0.github.io/posts/flash-attention/#stabilizing-the-exponent). The key idea here is that for a selected token, we need the target token logit and the softmax denominator over the full vocabulary. For the denominator, we need to look at all logits, but we need not store/persist them. They can be maintained via a running max and running sum while we iterate over the chunks.
@@ -215,12 +218,13 @@ Another optimization is to do the LM head multiplication in chunks where you spl
 # Simplified pseudocode.
 # hidden_states: (bsz*seq_len, hidden_dim)
 # lm_head: (hidden_size, vocab_size)
-def chunked_lm_head_mul(old_hidden_states, new_hidden_states, lm_head):
+def chunked_lm_head_mul(old_hidden_states, new_hidden_states, lm_head, sampled_tokens, advantage):
   def get_logps(hidden_states, lm_head):
     _, vocab_size = lm_head.shape
     N = hidden_states.shape[0] # bsz * seq_len: one per token per seq
-    prev_max = None
-    sampled_token_logit = torch.zeros((N,), device=device, dtype=torch.float32)
+    row_max = torch.full((N,), -float("inf"), device=device, dtype=torch.float32)
+    row_sum = torch.zeros((N,), device=device, dtype=torch.float32)
+    sampled_token_logit = torch.empty((N,), device=device, dtype=torch.float32)
     for start_idx in range(0, vocab_size, chunk_size):
       end_idx = min(start_idx + chunk_size, vocab_size)
       chunk = lm_head[:, start_idx:end_idx] # (hidden_size, chunk_size)
@@ -232,9 +236,9 @@ def chunked_lm_head_mul(old_hidden_states, new_hidden_states, lm_head):
       mask = (sampled_tokens >= start_idx) & (sampled_tokens < end_idx) # update for the chunk
       # each token in a batch/seq has its own vocab ID. they might or might not be in the current chunk
       # so we do a masked update
-      sampled_token_logit[mask] = partial_logps[mask, sampled_tokens[mask] - start_idx]
+      sampled_token_logit[mask] = partial_logits[mask, sampled_tokens[mask] - start_idx]
       pass
-    lse_vocab = row_max + log(row_sum)
+    lse_vocab = row_max + torch.log(row_sum)
     logp = sampled_token_logit - lse_vocab # log(exp(target_logit) / sum(exp(logits)))
     return logp
   
@@ -279,14 +283,16 @@ model, tokenizer = FastLanguageModel.from_pretrained(
 
 ## Async GRPO
 
-Assuming that you are not GPU poor and have multiple GPUs to play around with for GRPO, one optimization you can explore is to perform the rollouts and trainer passes simultaneously. In general, synchronous and sequential is preferred because it is mathematically cleaner. But it has been observed multiple times that even when the weights are nominally the same, kernel changes, batch-size changes, precision choices, and inference-engine differences can create a drift between the logits or completions generated by the trainer and those generated by the inference engine. People tend to use importance sampling and other correction methods to handle this. But if you are going that far anyway, why not accept that there is a slight drift and not enforce strictly sequential generation/rollout and training?
+So what would you do if you have enough office space and you don't need to time slot back and in the next store the nights and front and in the next to the day? You want to maximize your utilization of the office space and get the work done as soon as possible. One thing you can do is potentially while the backend engineers are working on one feature, the frontend engineers can work on another (perhaps older) feature. Though there is a overhead of syncing codebase, we will probably smartly deal with that later. But for now, a few commits behind or a few commits ahead is manageable. Of course, you might need to sync everyone to the same state every once in a while to make sure the drift is not too large.
+
+Assuming that you are not GPU poor and have multiple GPUs to play around with for GRPO, ask yourself the same question again. What is the inference GPU doing when the trainer is updating? And what is the trainer GPU doing when inference engines are generating rollouts? And of course, there is a sync phase happening at the boundary as well. They're just idle. In general, synchronous and sequential is preferred because it is mathematically cleaner. But [it has been observed](https://fengyao.notion.site/Your-Efficient-RL-Framework-Secretly-Brings-You-Off-Policy-RL-Training-237721e3f6c48094ad67dad3ac091c56) multiple times that even when the weights are nominally the same, kernel changes, batch-size changes, precision choices, and inference-engine differences can create a drift between the logits or completions generated by the trainer and those generated by the inference engine. People tend to use importance sampling and other correction methods to handle this. But if you are going that far anyway, why not accept that there is a slight drift and not enforce strictly sequential generation/rollout and training? 
 
 This is exactly what Async GRPO does, where the inference engine on one GPU generates rollouts for the second batch while the trainer is forward passing through the first batch. This means that the inference engine is behind by a step or two when it comes to the weights. But because we do trust-region-style clipping and other stabilizers, a couple of steps of lag may be recoverable with importance sampling.
 
 ![Async GRPO pipeline overlaps rollout and training on different GPUs](/assets/img/blogs/systems_for_llm_rl/async_rl.jpg)
 *Async GRPO overlaps rollout and training, accepting small policy lag for higher utilization.*
 
-You can go even further and make sure that the weight sync doesn't pause rollout generation. As in, while tokens are being generated, you update the weights one chunk at a time. So there is a possibility that within a single completion, some tokens are generated using older weights and some are generated using newer weights. The Prime Intellect 3 paper mentions that with Async/Pipeline GRPO, they observed a speedup of 2x compared to the version without those optimizations. But one needs to be careful to make sure that we are not overdoing these optimizations where there is a mismatch between the trainer and inference engine. If the difference becomes too high, then we are essentially doing off-policy learning instead of on-policy learning, which is less robust.
+You can go even further and make sure that the weight sync doesn't pause rollout generation for too long. As in, while tokens are being generated, you update the weights one chunk at a time. So there is a possibility that within a single completion, some tokens are generated using older weights and some are generated using newer weights. The Prime Intellect 3 paper mentions that without in-flight weight updating, their RL step time increased by more than 2x. But one needs to be careful to make sure that we are not overdoing these optimizations where there is a mismatch between the trainer and inference engine. If the difference becomes too high, then we are essentially doing off-policy learning instead of on-policy learning, which is less robust.
 
 ![Pipeline GRPO makes weight sync non-blocking](/assets/img/blogs/systems_for_llm_rl/pipeline_rl.jpg)
 *Pipeline GRPO lets rollout continue while newer weights arrive, trading exact synchronization for utilization.*
@@ -294,6 +300,7 @@ You can go even further and make sure that the weight sync doesn't pause rollout
 The advantages may be more pronounced for larger-scale model training, especially across multiple nodes where weight sync time is bound by network speed and can bottleneck the entire training. For intra-node communication on PCIe or NVLink, especially for small-scale model training, you might get away without these optimizations, but they are still worth measuring.
 
 ### Delta weight sync
+So when working with codebase updates, do you ship the entire codebase every night between the teams and wait while syncing is happening? You'd invent something like Git and just share the patches or a diffs. Assuming that the delta is smaller than the object itself, this is well worth the trade off. But of course, you need some book keeping on what changes are being made and where and how to apply them correctly.
 
 There is also a reason for exploring the possibility of compressing the weight updates. Typically, when you do mixed-precision training, any change that is less than half the local spacing of the data type will be rounded away. For example, in BF16 you have
 
@@ -304,10 +311,11 @@ Sign bit     8 exponent bits      7 mantissa bits
 
 So between any two consecutive powers of 2, we have 7 bits of precision, aka 128 intervals to play with. For a weight of magnitude `|w|`, the spacing is approximately `|w|/128` within that exponent range. Anything less than roughly half that spacing will round away. It's like doing `10^3 += 0.1` but you can only represent whole numbers. For this to make any change in the value, it needs to be at least `0.5` so that rounding will carry it over to the next representable value (a whole number in the example, BF16 in reality).
 
-Typically, the weights in LLMs are around the scale $1e^{-3}$. So the BF16 spacing around that value is approximately $1e^{-3}/128 \approx 7.8e^{-6}$. If you set the learning rate to $\approx 1e^{-5}$, then the effective optimizer update has to be large enough to survive BF16 rounding. With norm-based gradient clipping, low RL learning rates, and small gradients, you can end up in a tight regime. It is also empirically observed that approximately 99% of the BF16 weight deltas are zero in some mixed-precision RL training settings with lower learning rates. So one thing you can do is, instead of sharing the entire weight tensor over the network, identify the specific positions where updates have taken place and share only those values. If the updates are dense or the model is small, this bookkeeping can cost more, especially on high-speed interconnects like PCIe or NVLink. But over the network for large-scale models, the bookkeeping cost can be amortized and save a lot of time. [You can read more here](https://huggingface.co/blog/delta-weight-sync).
+Typically, the weights in LLMs are around the scale $1e^{-3}$. So the BF16 spacing around that value is approximately $1e^{-3}/128 \approx 7.8e^{-6}$. If you set the learning rate to $\approx 1e^{-5}$, then the effective optimizer update has to be large enough to survive BF16 rounding. With norm-based gradient clipping, low RL learning rates, and small gradients, you can end up in a tight regime. It is also empirically observed that approximately 99% of stored BF16 weights can remain bit-identical between consecutive RL optimizer steps in some mixed-precision RL training settings with lower learning rates. So one thing you can do is, instead of sharing the entire weight tensor over the network, identify the specific positions where updates have actually changed the stored BF16 value and share only those values. If the updates are dense or the model is small, this bookkeeping can cost more, especially on high-speed interconnects like PCIe or NVLink. But over the network for large-scale models, the bookkeeping cost can be amortized and save a lot of time. [You can read more here](https://huggingface.co/blog/delta-weight-sync).
 
-So instead of sharing an entire tensor of shape `(m, n)`, you share a map `{(i, j): new_value}` where `(i, j)` are the indices of the non-zero updates. Assuming that indices are integers and values are BF16, you are transferring more data per changed value, but you're only sharing a tiny fraction of the values. Of course, this also assumes that the inference engine can hot-swap particular weights and indices on the fly. There are open PRs on vLLM, but otherwise, this can be done via a patch or extension.
+So how do you take adavntage of this? Instead of sharing the entire weight tensor, we might as well just share the "delta" (in literal and analogy sense). Instead of sharing an entire tensor of shape `(m, n)`, you share a map `{(i, j): new_value}` where `(i, j)` are the indices of the values that actually changed. Assuming that indices are integers and values are BF16, you are transferring more (~2x) data per changed value, but you're only sharing a tiny fraction of the `values`. Of course, this also assumes that the inference engine can hot-swap particular weights and indices on the fly, either through native support or a worker extension.
 
+![Delta Weight Sync](/assets/img/blogs/systems_for_llm_rl/delta_weight_sync.jpg)*Delta weight sync in action*
 
 ## Conclusion
 
